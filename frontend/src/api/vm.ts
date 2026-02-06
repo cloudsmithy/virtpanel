@@ -6,6 +6,8 @@ export interface VM {
   state: string
   cpu: number
   memory: number
+  cpu_usage: number
+  mem_used: number
 }
 
 export interface VMDetail {

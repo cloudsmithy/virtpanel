@@ -3,3 +3,5 @@ declare module '*.vue' {
   const component: DefineComponent<{}, {}, any>
   export default component
 }
+
+declare module '@novnc/novnc/lib/rfb.js'

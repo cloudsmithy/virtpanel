@@ -45,3 +45,16 @@ func (h *Handler) RevertSnapshot(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "reverted"})
 }
+
+func (h *Handler) RevertSnapshotToNew(c *gin.Context) {
+	var req model.RevertSnapshotToNewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.svc.RevertSnapshotToNew(c.Param("name"), c.Param("snap"), req.NewName); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "reverted to new vm"})
+}

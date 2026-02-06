@@ -10,7 +10,7 @@
       </div>
       <div style="flex:1" />
       <a-space>
-        <a-button v-if="detail?.state === 'running'" @click="router.push({ name: 'vnc', params: { name: vmName } })">控制台</a-button>
+        <a-button v-if="detail?.state === 'running'" @click="openVNC">控制台</a-button>
         <a-button @click="loadDetail">刷新</a-button>
       </a-space>
     </div>
@@ -175,6 +175,10 @@ const infoCards = computed(() => {
 })
 
 const loadDetail = async () => { try { detail.value = await vmApi.detail(vmName.value) } catch { Message.error('加载失败') } }
+const openVNC = () => {
+  const route = router.resolve({ name: 'vnc', params: { name: vmName.value } })
+  window.open(route.href, '_blank')
+}
 const loadISOs = async () => { try { isos.value = await isoApi.list() } catch {} }
 const loadNetworks = async () => { try { networks.value = await networkApi.list() } catch {} }
 

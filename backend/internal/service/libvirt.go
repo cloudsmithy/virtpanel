@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -18,13 +19,19 @@ import (
 
 var safeNameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
+type cpuSample struct {
+	time    uint64
+	ts      time.Time
+}
+
 type LibvirtService struct {
-	l  *libvirt.Libvirt
-	mu sync.Mutex // protects all libvirt operations
+	l          *libvirt.Libvirt
+	mu         sync.Mutex
+	cpuCache   map[string]cpuSample // domain name -> last cpu sample
 }
 
 func NewLibvirtService() (*LibvirtService, error) {
-	svc := &LibvirtService{}
+	svc := &LibvirtService{cpuCache: make(map[string]cpuSample)}
 	if err := svc.connect(); err != nil {
 		return nil, err
 	}
@@ -121,6 +128,7 @@ func (s *LibvirtService) listVMsLocked() ([]model.VM, error) {
 		return nil, err
 	}
 	vms := make([]model.VM, 0, len(domains))
+	now := time.Now()
 	for _, d := range domains {
 		state, _, _, _, _, err := s.l.DomainGetInfo(d)
 		if err != nil {
@@ -132,12 +140,58 @@ func (s *LibvirtService) listVMsLocked() ([]model.VM, error) {
 		}
 		cpu, mem := parseDomainInfo(xmlStr)
 		uuidStr := fmt.Sprintf("%x", d.UUID)
+		st := stateName(libvirt.DomainState(state))
+
+		var cpuUsage float64
+		var memUsed int
+
+		if st == "running" {
+			// CPU usage: compare with cached sample
+			_, _, cpuTimeNs, _, _, err := s.l.DomainGetInfo(d)
+			if err == nil {
+				prev, ok := s.cpuCache[d.Name]
+				if ok {
+					dt := now.Sub(prev.ts).Seconds()
+					if dt > 0 && cpu > 0 {
+						cpuUsage = float64(cpuTimeNs-prev.time) / (dt * 1e9 * float64(cpu)) * 100
+						if cpuUsage > 100 {
+							cpuUsage = 100
+						}
+						if cpuUsage < 0 {
+							cpuUsage = 0
+						}
+						cpuUsage = math.Round(cpuUsage*10) / 10
+					}
+				}
+				s.cpuCache[d.Name] = cpuSample{time: cpuTimeNs, ts: now}
+			}
+
+			// Memory: try balloon stats via dommemstat
+			memStats, err := s.l.DomainMemoryStats(d, 11, 0)
+			if err == nil {
+				var available, unused uint64
+				for _, ms := range memStats {
+					switch ms.Tag {
+					case 6: // available
+						available = ms.Val
+					case 4: // unused
+						unused = ms.Val
+					}
+				}
+				if available > 0 && unused > 0 {
+					memUsed = int((available - unused) / 1024) // KiB -> MiB
+				}
+			}
+		}
+
 		vms = append(vms, model.VM{
-			Name:   d.Name,
-			UUID:   uuidStr,
-			State:  stateName(libvirt.DomainState(state)),
-			CPU:    cpu,
-			Memory: mem,
+			Name:     d.Name,
+			UUID:     uuidStr,
+			State:    st,
+			CPU:      cpu,
+			Memory:   mem,
+			CPUUsage: cpuUsage,
+			MemUsed:  memUsed,
 		})
 	}
 	return vms, nil
@@ -474,6 +528,9 @@ func (s *LibvirtService) CreateVM(req model.CreateVMRequest) error {
       <model type='%s'/>
     </interface>
     <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='32768' heads='1' primary='yes'/>
+    </video>
     <console type='pty'/>
   </devices>
 </domain>`, req.Name, req.Memory, req.CPU, cpuXML, clockXML, machineAttr, scsiCtrl, req.Name, diskDev, diskBus, cdromDev, cdromBus, virtioCD, netModel)
@@ -502,19 +559,39 @@ func (s *LibvirtService) GetHostInfo() (*model.HostInfo, error) {
 		return nil, err
 	}
 
-	rModel, rMemory, rCpus, _, _, _, _, _, err := s.l.NodeGetInfo()
+	_, rMemory, rCpus, _, _, _, _, _, err := s.l.NodeGetInfo()
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert [32]int8 to string
-	modelBytes := make([]byte, 0, 32)
-	for _, b := range rModel {
-		if b == 0 {
-			break
+	// Read real CPU model from /proc/cpuinfo
+	cpuModel := "unknown"
+	if data, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "model name") {
+				if idx := strings.Index(line, ":"); idx >= 0 {
+					cpuModel = strings.TrimSpace(line[idx+1:])
+				}
+				break
+			}
 		}
-		modelBytes = append(modelBytes, byte(b))
 	}
+
+	// Read MemAvailable from /proc/meminfo
+	memAvailMiB := 0
+	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "MemAvailable:") {
+				var kb int
+				fmt.Sscanf(line, "MemAvailable: %d kB", &kb)
+				memAvailMiB = kb / 1024
+				break
+			}
+		}
+	}
+
+	// Read CPU usage from /proc/stat (two samples 200ms apart)
+	cpuUsage := readCPUUsage()
 
 	vms, err := s.listVMsLocked()
 	if err != nil {
@@ -528,18 +605,45 @@ func (s *LibvirtService) GetHostInfo() (*model.HostInfo, error) {
 		}
 	}
 
-	memFree, err := s.l.NodeGetFreeMemory()
-	if err != nil {
-		memFree = 0
-	}
-
 	return &model.HostInfo{
 		Hostname:    hostname,
-		CPUModel:    string(modelBytes),
+		CPUModel:    cpuModel,
 		CPUCount:    int(rCpus),
-		MemoryTotal: int(rMemory / 1024), // rMemory is KiB, convert to MiB
-		MemoryFree:  int(memFree / 1024 / 1024),  // bytes -> MiB
+		CPUUsage:    cpuUsage,
+		MemoryTotal: int(rMemory / 1024),
+		MemoryFree:  memAvailMiB,
 		VMRunning:   running,
 		VMTotal:     len(vms),
 	}, nil
+}
+
+func readCPUUsage() float64 {
+	read := func() (idle, total uint64) {
+		data, err := os.ReadFile("/proc/stat")
+		if err != nil {
+			return
+		}
+		line := strings.Split(string(data), "\n")[0] // "cpu  ..."
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			return
+		}
+		for i := 1; i < len(fields); i++ {
+			var v uint64
+			fmt.Sscanf(fields[i], "%d", &v)
+			total += v
+			if i == 4 { // idle is 4th field
+				idle = v
+			}
+		}
+		return
+	}
+	idle1, total1 := read()
+	time.Sleep(200 * time.Millisecond)
+	idle2, total2 := read()
+	dt := total2 - total1
+	if dt == 0 {
+		return 0
+	}
+	return math.Round((1-float64(idle2-idle1)/float64(dt))*1000) / 10
 }

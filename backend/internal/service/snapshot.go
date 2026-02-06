@@ -4,6 +4,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html"
+	"os/exec"
+
 	"kvmmm/internal/model"
 )
 
@@ -101,4 +103,70 @@ func (s *LibvirtService) RevertSnapshot(vmName, snapName string) error {
 		return err
 	}
 	return s.l.DomainRevertToSnapshot(snap, 0)
+}
+
+// RevertSnapshotToNew reverts a snapshot and clones the result to a new VM.
+// Steps: revert snapshot -> clone to newName -> revert back to current snapshot.
+func (s *LibvirtService) RevertSnapshotToNew(vmName, snapName, newName string) error {
+	if !safeNameRe.MatchString(newName) {
+		return fmt.Errorf("invalid vm name: %s", newName)
+	}
+
+	// 1. Remember current snapshot (if any)
+	s.mu.Lock()
+	if err := s.ensureConnected(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	d, err := s.l.DomainLookupByName(vmName)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	currentSnap, currentErr := s.l.DomainSnapshotCurrent(d, 0)
+
+	// 2. Revert to target snapshot
+	snap, err := s.l.DomainSnapshotLookupByName(d, snapName, 0)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	if err := s.l.DomainRevertToSnapshot(snap, 0); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("revert failed: %w", err)
+	}
+	// Make sure VM is shut off for cloning
+	_ = s.l.DomainDestroy(d)
+	s.mu.Unlock()
+
+	// 3. Clone (runs outside lock, may be slow)
+	cmd := exec.Command("virt-clone", "--original", vmName, "--name", newName, "--auto-clone")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// Try to restore original state before returning error
+		s.mu.Lock()
+		if currentErr == nil {
+			d2, _ := s.l.DomainLookupByName(vmName)
+			cs, _ := s.l.DomainSnapshotLookupByName(d2, currentSnap.Name, 0)
+			s.l.DomainRevertToSnapshot(cs, 0)
+		}
+		s.mu.Unlock()
+		return fmt.Errorf("clone failed: %s", string(output))
+	}
+
+	// 4. Restore original VM to its previous snapshot
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureConnected(); err != nil {
+		return nil // clone succeeded, just can't restore — acceptable
+	}
+	if currentErr == nil {
+		d2, err := s.l.DomainLookupByName(vmName)
+		if err == nil {
+			cs, err := s.l.DomainSnapshotLookupByName(d2, currentSnap.Name, 0)
+			if err == nil {
+				s.l.DomainRevertToSnapshot(cs, 0)
+			}
+		}
+	}
+	return nil
 }

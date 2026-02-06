@@ -4,6 +4,7 @@ export interface HostInfo {
   hostname: string
   cpu_model: string
   cpu_count: number
+  cpu_usage: number
   memory_total: number
   memory_free: number
   vm_running: number

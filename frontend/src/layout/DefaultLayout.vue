@@ -1,11 +1,9 @@
 <template>
   <a-layout class="app-layout">
     <div class="sidebar" :class="{ collapsed }">
-      <div class="sidebar-logo" @click="collapsed = !collapsed">
-        <div class="logo-dot" />
-        <transition name="fade">
-          <span v-if="!collapsed" class="logo-text">虚拟化</span>
-        </transition>
+      <div class="sidebar-logo">
+        <span v-if="!collapsed" class="logo-text">虚拟化</span>
+        <span v-else class="logo-text">V</span>
       </div>
       <nav class="sidebar-nav">
         <div
@@ -16,14 +14,12 @@
           @click="onMenuClick(item.key)"
         >
           <component :is="item.icon" class="nav-icon" />
-          <transition name="fade">
-            <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
-          </transition>
+          <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
         </div>
       </nav>
-      <div class="sidebar-footer" @click="collapsed = !collapsed">
-        <icon-left v-if="!collapsed" class="nav-icon" style="color:rgba(255,255,255,0.4)" />
-        <icon-right v-else class="nav-icon" style="color:rgba(255,255,255,0.4)" />
+      <div class="sidebar-bottom" @click="collapsed = !collapsed">
+        <icon-left v-if="!collapsed" class="nav-icon" />
+        <icon-right v-else class="nav-icon" />
       </div>
     </div>
     <div class="main-area">
@@ -79,109 +75,102 @@ const onMenuClick = (key: string) => router.push({ name: key })
 .app-layout {
   height: 100vh;
   display: flex;
-  flex-direction: row;
   overflow: hidden;
 }
+
 .sidebar {
-  width: 200px;
-  background: linear-gradient(180deg, #1a3a5c 0%, #1e4976 100%);
+  width: 220px;
+  background: #f0f0f5;
   display: flex;
   flex-direction: column;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.2s ease;
   flex-shrink: 0;
+  border-right: 1px solid rgba(0,0,0,0.06);
 }
-.sidebar.collapsed { width: 56px; }
+.sidebar.collapsed { width: 60px; }
+
 .sidebar-logo {
-  height: 52px;
+  height: 54px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 10px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.collapsed .sidebar-logo { justify-content: center; padding: 0; }
-.logo-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: #5ac8fa;
+  justify-content: center;
   flex-shrink: 0;
 }
 .logo-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.9);
+  font-size: 16px;
+  font-weight: 700;
+  color: #1c1c1e;
   letter-spacing: 0.5px;
-  white-space: nowrap;
 }
+
 .sidebar-nav {
   flex: 1;
-  padding: 8px 6px;
+  padding: 6px 10px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
-.collapsed .sidebar-nav { padding: 8px 4px; }
+.collapsed .sidebar-nav { padding: 6px; }
+
 .nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: 7px;
+  padding: 9px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  color: rgba(255,255,255,0.5);
+  transition: background 0.12s;
+  color: #48484a;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
-  font-size: 13px;
 }
-.collapsed .nav-item { justify-content: center; padding: 8px; }
-.nav-item:hover {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.8);
-}
+.collapsed .nav-item { justify-content: center; padding: 9px; }
+
+.nav-item:hover { background: rgba(0,0,0,0.04); }
 .nav-item.active {
-  background: rgba(255,255,255,0.12);
+  background: #007AFF;
   color: #fff;
 }
-.nav-icon { font-size: 17px; flex-shrink: 0; }
+.nav-item.active .nav-icon { color: #fff; }
+
+.nav-icon { font-size: 18px; flex-shrink: 0; color: #636366; }
 .nav-label { font-weight: 500; }
-.sidebar-footer {
+
+.sidebar-bottom {
   padding: 12px;
   display: flex;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
 }
+.sidebar-bottom .nav-icon { color: #aeaeb2; font-size: 14px; }
+
 .main-area {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #f2f2f7;
+  background: #f9f9fb;
 }
 .app-header {
-  height: 52px;
+  height: 54px;
   display: flex;
   align-items: center;
-  padding: 0 24px;
-  background: rgba(255,255,255,0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 0.5px solid rgba(0,0,0,0.08);
+  padding: 0 28px;
+  background: #fff;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
   flex-shrink: 0;
 }
 .page-title {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: #1c1c1e;
   margin: 0;
 }
 .app-content {
   flex: 1;
-  padding: 20px 24px;
+  padding: 24px 28px;
   overflow-y: auto;
 }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

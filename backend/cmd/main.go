@@ -57,6 +57,7 @@ func main() {
 		api.POST("/vms/:name/snapshots", h.CreateSnapshot)
 		api.DELETE("/vms/:name/snapshots/:snap", h.DeleteSnapshot)
 		api.POST("/vms/:name/snapshots/:snap/revert", h.RevertSnapshot)
+		api.POST("/vms/:name/snapshots/:snap/revert-to-new", h.RevertSnapshotToNew)
 
 		// Networks
 		api.GET("/networks", h.ListNetworks)

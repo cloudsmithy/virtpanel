@@ -1,11 +1,13 @@
 package model
 
 type VM struct {
-	Name   string `json:"name"`
-	UUID   string `json:"uuid"`
-	State  string `json:"state"`
-	CPU    int    `json:"cpu"`
-	Memory int    `json:"memory"` // MB
+	Name      string  `json:"name"`
+	UUID      string  `json:"uuid"`
+	State     string  `json:"state"`
+	CPU       int     `json:"cpu"`
+	Memory    int     `json:"memory"`     // MB (allocated)
+	CPUUsage  float64 `json:"cpu_usage"`  // percent 0-100
+	MemUsed   int     `json:"mem_used"`   // MB (actually used inside guest)
 }
 
 type CreateVMRequest struct {
@@ -23,13 +25,14 @@ type CreateVMRequest struct {
 }
 
 type HostInfo struct {
-	Hostname    string `json:"hostname"`
-	CPUModel    string `json:"cpu_model"`
-	CPUCount    int    `json:"cpu_count"`
-	MemoryTotal int    `json:"memory_total"` // MB
-	MemoryFree  int    `json:"memory_free"`  // MB
-	VMRunning   int    `json:"vm_running"`
-	VMTotal     int    `json:"vm_total"`
+	Hostname    string  `json:"hostname"`
+	CPUModel    string  `json:"cpu_model"`
+	CPUCount    int     `json:"cpu_count"`
+	CPUUsage    float64 `json:"cpu_usage"`     // percent 0-100
+	MemoryTotal int     `json:"memory_total"`  // MB
+	MemoryFree  int     `json:"memory_free"`   // MB (available)
+	VMRunning   int     `json:"vm_running"`
+	VMTotal     int     `json:"vm_total"`
 }
 
 type Network struct {
@@ -148,5 +151,9 @@ type AttachISORequest struct {
 }
 
 type CloneVMRequest struct {
+	NewName string `json:"new_name" binding:"required"`
+}
+
+type RevertSnapshotToNewRequest struct {
 	NewName string `json:"new_name" binding:"required"`
 }

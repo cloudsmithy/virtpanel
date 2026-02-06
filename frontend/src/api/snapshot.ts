@@ -14,4 +14,6 @@ export const snapshotApi = {
     http.post(`/vms/${vm}/snapshots`, data),
   delete: (vm: string, snap: string) => http.delete(`/vms/${vm}/snapshots/${snap}`),
   revert: (vm: string, snap: string) => http.post(`/vms/${vm}/snapshots/${snap}/revert`),
+  revertToNew: (vm: string, snap: string, newName: string) =>
+    http.post(`/vms/${vm}/snapshots/${snap}/revert-to-new`, { new_name: newName }),
 }

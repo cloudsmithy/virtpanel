@@ -22,16 +22,26 @@
               <a-badge :status="stateBadge(record.state)" :text="stateText(record.state)" />
             </template>
           </a-table-column>
-          <a-table-column title="CPU" data-index="cpu">
-            <template #cell="{ record }">{{ record.cpu }} 核</template>
+          <a-table-column title="CPU" :width="160">
+            <template #cell="{ record }">
+              <div>{{ record.cpu }} 核</div>
+              <a-progress v-if="record.state === 'running'" :percent="record.cpu_usage / 100" :stroke-width="4" :show-text="false" style="width:80px;margin-top:2px" />
+              <span v-if="record.state === 'running'" style="font-size:11px;color:#8e8e93;margin-left:4px">{{ record.cpu_usage }}%</span>
+            </template>
           </a-table-column>
-          <a-table-column title="内存" data-index="memory">
-            <template #cell="{ record }">{{ record.memory >= 1024 ? (record.memory / 1024).toFixed(1) + ' GB' : record.memory + ' MB' }}</template>
+          <a-table-column title="内存" :width="180">
+            <template #cell="{ record }">
+              <div>{{ record.memory >= 1024 ? (record.memory / 1024).toFixed(1) + ' GB' : record.memory + ' MB' }}</div>
+              <template v-if="record.state === 'running' && record.mem_used > 0">
+                <a-progress :percent="record.mem_used / record.memory" :stroke-width="4" :show-text="false" color="#FF9500" style="width:80px;margin-top:2px" />
+                <span style="font-size:11px;color:#8e8e93;margin-left:4px">{{ record.mem_used >= 1024 ? (record.mem_used / 1024).toFixed(1) + 'G' : record.mem_used + 'M' }}</span>
+              </template>
+            </template>
           </a-table-column>
           <a-table-column title="操作">
             <template #cell="{ record }">
               <a-space>
-                <a-button v-if="record.state === 'running'" size="small" @click="router.push({ name: 'vnc', params: { name: record.name } })">控制台</a-button>
+                <a-button v-if="record.state === 'running'" size="small" @click="openVNC(record.name)">控制台</a-button>
                 <a-button v-if="record.state !== 'running' && record.state !== 'paused'" size="small" type="primary" @click="doAction(record.name, 'start')">启动</a-button>
                 <a-button v-if="record.state === 'running'" size="small" status="warning" @click="doAction(record.name, 'shutdown')">关机</a-button>
                 <a-popconfirm v-if="record.state === 'running'" content="强制关机会立即断电，可能丢失数据" @ok="doAction(record.name, 'destroy')">
@@ -323,7 +333,12 @@ const actionTips: Record<string, string> = {
   destroy: '已强制关机',
 }
 
-const doAction = async (name: string, action: 'start' | 'shutdown' | 'reboot' | 'suspend' | 'resume') => {
+const openVNC = (name: string) => {
+  const route = router.resolve({ name: 'vnc', params: { name } })
+  window.open(route.href, '_blank')
+}
+
+const doAction = async (name: string, action: 'start' | 'shutdown' | 'destroy' | 'reboot' | 'suspend' | 'resume') => {
   try {
     await vmApi[action](name)
     Message.success(actionTips[action] || '操作成功')

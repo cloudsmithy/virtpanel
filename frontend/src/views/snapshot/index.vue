@@ -34,9 +34,7 @@
             <a-table-column title="操作" :width="160">
               <template #cell="{ record }">
                 <a-space>
-                  <a-popconfirm content="确认恢复到此快照？" @ok="doRevert(record.name)">
-                    <a-button size="small" type="primary">恢复</a-button>
-                  </a-popconfirm>
+                  <a-button size="small" type="primary" @click="openRevert(record.name)">恢复</a-button>
                   <a-popconfirm content="确认删除？" @ok="doDelete(record.name)">
                     <a-button size="small" status="danger">删除</a-button>
                   </a-popconfirm>
@@ -60,6 +58,20 @@
         <a-form-item label="描述"><a-input v-model="form.description" placeholder="可选描述" /></a-form-item>
       </a-form>
     </a-modal>
+
+    <a-modal v-model:visible="showRevert" title="恢复快照" @ok="onRevert" :ok-loading="reverting" unmount-on-close>
+      <a-form :model="revertForm" layout="vertical">
+        <a-form-item label="恢复方式">
+          <a-radio-group v-model="revertForm.mode" direction="vertical">
+            <a-radio value="original">还原到原虚拟机（覆盖当前状态）</a-radio>
+            <a-radio value="new">还原到新虚拟机（保留原虚拟机不变）</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item v-if="revertForm.mode === 'new'" label="新虚拟机名称" required>
+          <a-input v-model="revertForm.newName" :placeholder="selectedVM + '-restored'" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </a-space>
 </template>
 
@@ -76,6 +88,9 @@ const loading = ref(false)
 const showCreate = ref(false)
 const creating = ref(false)
 const form = reactive({ name: '', description: '' })
+const showRevert = ref(false)
+const reverting = ref(false)
+const revertForm = reactive({ snap: '', mode: 'original' as 'original' | 'new', newName: '' })
 
 const loadVMs = async () => { try { vms.value = await vmApi.list() } catch {} }
 const loadSnapshots = async () => {
@@ -85,8 +100,26 @@ const loadSnapshots = async () => {
   loading.value = false
 }
 
-const doRevert = async (snap: string) => {
-  try { await snapshotApi.revert(selectedVM.value, snap); Message.success('已恢复'); loadSnapshots() } catch { Message.error('恢复失败') }
+const openRevert = (snap: string) => {
+  revertForm.snap = snap
+  revertForm.mode = 'original'
+  revertForm.newName = selectedVM.value + '-restored'
+  showRevert.value = true
+}
+const onRevert = async () => {
+  reverting.value = true
+  try {
+    if (revertForm.mode === 'new') {
+      if (!revertForm.newName.trim()) { Message.warning('请输入新虚拟机名称'); reverting.value = false; return }
+      await snapshotApi.revertToNew(selectedVM.value, revertForm.snap, revertForm.newName)
+      Message.success('已还原到新虚拟机 ' + revertForm.newName)
+    } else {
+      await snapshotApi.revert(selectedVM.value, revertForm.snap)
+      Message.success('已恢复')
+    }
+    showRevert.value = false; loadSnapshots()
+  } catch { Message.error('恢复失败') }
+  reverting.value = false
 }
 const doDelete = async (snap: string) => {
   try { await snapshotApi.delete(selectedVM.value, snap); Message.success('已删除'); loadSnapshots() } catch { Message.error('删除失败') }
