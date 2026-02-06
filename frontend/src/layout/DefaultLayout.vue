@@ -1,5 +1,5 @@
 <template>
-  <a-layout class="app-layout">
+  <div class="app-layout">
     <div class="sidebar" :class="{ collapsed }">
       <div class="sidebar-logo">
         <span v-if="!collapsed" class="logo-text">虚拟化</span>
@@ -34,7 +34,7 @@
         </router-view>
       </main>
     </div>
-  </a-layout>
+  </div>
 </template>
 
 <script setup lang="ts">
