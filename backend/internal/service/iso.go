@@ -46,6 +46,9 @@ func (s *LibvirtService) UploadISO(filename string, reader io.Reader) error {
 	}
 	os.MkdirAll(isoDir, 0755)
 	dstPath := filepath.Join(isoDir, filename)
+	if _, err := os.Stat(dstPath); err == nil {
+		return fmt.Errorf("文件已存在: %s", filename)
+	}
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		return err

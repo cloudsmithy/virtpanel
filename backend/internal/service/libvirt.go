@@ -373,7 +373,7 @@ func (s *LibvirtService) DeleteVM(name string) error {
 			}
 		}
 		for _, p := range diskPaths {
-			if !usedPaths[p] {
+			if !usedPaths[p] && strings.HasPrefix(p, "/var/lib/libvirt/images/") {
 				os.Remove(p)
 			}
 		}
@@ -566,15 +566,24 @@ func (s *LibvirtService) UpdateVM(name string, req model.UpdateVMRequest) error 
 		return err
 	}
 
-	// Hot resize if running
+	// Hot resize if running, otherwise done
 	state, _, _, _, _, _ := s.l.DomainGetInfo(d)
-	if libvirt.DomainState(state) == libvirt.DomainRunning {
-		if req.CPU > 0 {
-			_ = s.l.DomainSetVcpusFlags(d, uint32(req.CPU), uint32(libvirt.DomainAffectLive))
+	if libvirt.DomainState(state) != libvirt.DomainRunning {
+		return nil
+	}
+	var hotFailed bool
+	if req.CPU > 0 {
+		if err := s.l.DomainSetVcpusFlags(d, uint32(req.CPU), uint32(libvirt.DomainAffectLive)); err != nil {
+			hotFailed = true
 		}
-		if req.Memory > 0 {
-			_ = s.l.DomainSetMemoryFlags(d, uint64(req.Memory)*1024, uint32(libvirt.DomainMemLive))
+	}
+	if req.Memory > 0 {
+		if err := s.l.DomainSetMemoryFlags(d, uint64(req.Memory)*1024, uint32(libvirt.DomainMemLive)); err != nil {
+			hotFailed = true
 		}
+	}
+	if hotFailed {
+		return fmt.Errorf("已保存配置，但热修改失败，关机后重启生效")
 	}
 	return nil
 }

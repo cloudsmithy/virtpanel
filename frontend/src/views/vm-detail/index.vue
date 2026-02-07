@@ -14,6 +14,15 @@
         <a-popconfirm content="将弹出ISO并设置从硬盘启动，确认系统已安装完成？" @ok="doFinishInstall">
           <a-button v-if="hasISO" size="small" status="success">完成安装</a-button>
         </a-popconfirm>
+        <a-button v-if="detail?.state !== 'running' && detail?.state !== 'paused'" size="small" type="primary" @click="doAction('start')">启动</a-button>
+        <a-button v-if="detail?.state === 'running'" size="small" status="warning" @click="doAction('shutdown')">关机</a-button>
+        <a-popconfirm v-if="detail?.state === 'running'" content="强制关机会立即断电，可能丢失数据">
+          <template #content>强制关机会立即断电，可能丢失数据</template>
+          <a-button size="small" status="danger" @click="doAction('destroy')">强制关机</a-button>
+        </a-popconfirm>
+        <a-button v-if="detail?.state === 'running'" size="small" @click="doAction('reboot')">重启</a-button>
+        <a-button v-if="detail?.state === 'running'" size="small" @click="doAction('suspend')">暂停</a-button>
+        <a-button v-if="detail?.state === 'paused'" size="small" type="primary" @click="doAction('resume')">恢复</a-button>
         <a-button v-if="detail?.state === 'running'" @click="openVNC">控制台</a-button>
         <a-button @click="loadDetail">刷新</a-button>
       </a-space>
@@ -24,6 +33,27 @@
         <div class="info-card" :class="{ clickable: item.editable }" @click="item.editable && openEdit()">
           <div class="info-label">{{ item.label }} <span v-if="item.editable" style="font-size:10px;color:var(--color-primary)">✎</span></div>
           <div class="info-value">{{ item.value }}</div>
+        </div>
+      </a-col>
+    </a-row>
+
+    <a-row :gutter="16" class="animate-in" style="margin-top:16px" v-if="detail?.state === 'running' && vmStats">
+      <a-col :span="12">
+        <div class="info-card">
+          <div class="info-label">CPU 使用率</div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+            <a-progress :percent="(vmStats.cpu_usage || 0) / 100" :stroke-width="8" style="flex:1" />
+            <span style="font-size:16px;font-weight:700;min-width:50px;text-align:right">{{ vmStats.cpu_usage }}%</span>
+          </div>
+        </div>
+      </a-col>
+      <a-col :span="12">
+        <div class="info-card">
+          <div class="info-label">内存使用</div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+            <a-progress :percent="vmStats.mem_used && detail.memory ? vmStats.mem_used / detail.memory : 0" :stroke-width="8" color="#FF9500" style="flex:1" />
+            <span style="font-size:16px;font-weight:700;min-width:80px;text-align:right">{{ vmStats.mem_used >= 1024 ? (vmStats.mem_used / 1024).toFixed(1) + ' GB' : vmStats.mem_used + ' MB' }}</span>
+          </div>
         </div>
       </a-col>
     </a-row>
@@ -186,6 +216,7 @@ const router = useRouter()
 const vmName = computed(() => route.params.name as string)
 
 const detail = ref<VMDetail | null>(null)
+const vmStats = ref<{ cpu_usage: number; mem_used: number } | null>(null)
 const isos = ref<ISOFile[]>([])
 const networks = ref<Network[]>([])
 const autostart = ref(false)
@@ -214,9 +245,17 @@ const infoCards = computed(() => {
   ]
 })
 
-const loadDetail = async () => { try { detail.value = await vmApi.detail(vmName.value) } catch { Message.error('加载失败') } }
+const loadDetail = async () => {
+  try { detail.value = await vmApi.detail(vmName.value) } catch { Message.error('加载失败') }
+  try { const vm = await vmApi.get(vmName.value); vmStats.value = { cpu_usage: vm.cpu_usage, mem_used: vm.mem_used } } catch {}
+}
 const hasISO = computed(() => detail.value?.disks?.some(d => d.device === 'cdrom' && d.source) ?? false)
 const doFinishInstall = async () => { try { await vmApi.finishInstall(vmName.value); Message.success('已完成安装设置，下次启动将从硬盘引导'); loadDetail() } catch { Message.error('操作失败') } }
+
+const doAction = async (action: 'start' | 'shutdown' | 'destroy' | 'reboot' | 'suspend' | 'resume') => {
+  const tips: Record<string, string> = { shutdown: '关机信号已发送', destroy: '已强制关机', reboot: '重启信号已发送' }
+  try { await vmApi[action](vmName.value); Message.success(tips[action] || '操作成功'); setTimeout(loadDetail, 1000) } catch { Message.error('操作失败') }
+}
 const loadAutostart = async () => { try { const r = await vmApi.getAutostart(vmName.value); autostart.value = r.autostart } catch {} }
 const onAutostartChange = async (v: boolean | string | number) => { try { await vmApi.setAutostart(vmName.value, v as boolean); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostart.value = !v } }
 const openVNC = () => {

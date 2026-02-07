@@ -3,6 +3,12 @@
     <a-card title="虚拟机列表">
       <template #extra>
         <a-space>
+          <a-input-search v-model="searchKey" placeholder="搜索虚拟机" style="width:180px" size="small" allow-clear />
+          <a-select v-model="stateFilter" placeholder="全部状态" style="width:120px" size="small" allow-clear>
+            <a-option value="running">运行中</a-option>
+            <a-option value="shutoff">已关机</a-option>
+            <a-option value="paused">已暂停</a-option>
+          </a-select>
           <a-switch v-model="autoRefresh" checked-text="自动刷新" unchecked-text="自动刷新" />
           <template v-if="selectedKeys.length">
             <a-button size="small" type="primary" @click="doBatch('start')">批量启动</a-button>
@@ -18,7 +24,7 @@
           </a-button>
         </a-space>
       </template>
-      <a-table :data="vms" :loading="loading" row-key="name" :pagination="false" :row-selection="{ type: 'checkbox', showCheckedAll: true }" v-model:selectedKeys="selectedKeys">
+      <a-table :data="filteredVMs" :loading="loading" row-key="name" :pagination="false" :row-selection="{ type: 'checkbox', showCheckedAll: true }" v-model:selectedKeys="selectedKeys">
         <template #columns>
           <a-table-column title="名称" data-index="name">
             <template #cell="{ record }">
@@ -321,7 +327,19 @@ const router = useRouter()
 const vms = ref<VM[]>([])
 const loading = ref(false)
 const autoRefresh = ref(false)
+const searchKey = ref('')
+const stateFilter = ref<string | undefined>(undefined)
 let timer: ReturnType<typeof setInterval> | null = null
+
+const filteredVMs = computed(() => {
+  let list = vms.value
+  if (searchKey.value) {
+    const key = searchKey.value.toLowerCase()
+    list = list.filter(v => v.name.toLowerCase().includes(key))
+  }
+  if (stateFilter.value) list = list.filter(v => v.state === stateFilter.value)
+  return list
+})
 
 const showCreate = ref(false)
 const creating = ref(false)

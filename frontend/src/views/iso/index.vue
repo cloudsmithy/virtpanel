@@ -2,7 +2,7 @@
   <a-space direction="vertical" fill size="medium">
     <a-card title="ISO 镜像">
       <template #extra>
-        <a-upload :custom-request="onUpload" :show-file-list="false" accept=".iso" :multiple="true">
+        <a-upload :custom-request="onUpload" :show-file-list="false" accept=".iso" :multiple="true" draggable>
           <template #upload-button>
             <a-button type="primary" size="small">上传 ISO</a-button>
           </template>

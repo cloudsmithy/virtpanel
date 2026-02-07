@@ -26,6 +26,14 @@
               <span v-else style="color:var(--apple-gray)">-</span>
             </template>
           </a-table-column>
+          <a-table-column title="使用中的虚拟机">
+            <template #cell="{ record }">
+              <template v-if="poolVMMap[record.name]?.length">
+                <a-tag v-for="vm in poolVMMap[record.name]" :key="vm" size="small" color="arcoblue" style="margin:1px">{{ vm }}</a-tag>
+              </template>
+              <span v-else style="color:#8e8e93">-</span>
+            </template>
+          </a-table-column>
           <a-table-column title="操作" :width="220">
             <template #cell="{ record }">
               <a-space>
@@ -101,6 +109,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { storageApi, type StoragePool } from '../../api/storage'
 import { volumeApi, type StorageVolume } from '../../api/volume'
+import { vmApi } from '../../api/vm'
 import { Message } from '@arco-design/web-vue'
 
 const pools = ref<StoragePool[]>([])
@@ -113,6 +122,30 @@ const volLoading = ref<Record<string, boolean>>({})
 const showCreateVol = ref(false)
 const creatingVol = ref(false)
 const volForm = reactive({ pool: '', name: '', capacity: 20, format: 'qcow2' })
+const poolVMMap = ref<Record<string, string[]>>({})
+
+const loadPoolVMs = async () => {
+  try {
+    const vms = await vmApi.list()
+    const map: Record<string, string[]> = {}
+    for (const vm of vms) {
+      try {
+        const d = await vmApi.detail(vm.name)
+        for (const disk of d.disks) {
+          if (disk.device === 'disk' && disk.source) {
+            for (const p of pools.value) {
+              if (p.path && disk.source.startsWith(p.path)) {
+                if (!map[p.name]) map[p.name] = []
+                if (!map[p.name].includes(vm.name)) map[p.name].push(vm.name)
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+    poolVMMap.value = map
+  } catch {}
+}
 
 const expandable = reactive({
   expandedRowKeys: [] as string[],
@@ -122,7 +155,7 @@ const expandable = reactive({
   },
 })
 
-const load = async () => { loading.value = true; try { pools.value = await storageApi.list() } catch {} loading.value = false }
+const load = async () => { loading.value = true; try { pools.value = await storageApi.list(); loadPoolVMs() } catch {} loading.value = false }
 const loadVolumes = async (pool: string) => { volLoading.value[pool] = true; try { volumes.value[pool] = await volumeApi.list(pool) } catch { volumes.value[pool] = [] } volLoading.value[pool] = false }
 
 const doAction = async (name: string, action: 'start' | 'stop') => {

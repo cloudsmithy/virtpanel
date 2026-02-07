@@ -15,6 +15,7 @@
         >
           <component :is="item.icon" class="nav-icon" />
           <span v-if="!collapsed" class="nav-label">{{ item.label }}</span>
+          <span v-if="!collapsed && item.key === 'vm' && vmBadge" class="nav-badge">{{ vmBadge }}</span>
         </div>
       </nav>
       <div class="sidebar-bottom" @click="collapsed = !collapsed">
@@ -38,8 +39,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { hostApi } from '../api/host'
 import {
   IconDashboard, IconDesktop, IconWifi, IconStorage, IconHistory, IconFile,
   IconLeft, IconRight, IconShareExternal,
@@ -48,6 +50,17 @@ import {
 const router = useRouter()
 const route = useRoute()
 const collapsed = ref(false)
+const vmBadge = ref('')
+
+const loadVMCount = async () => {
+  try {
+    const info = await hostApi.info()
+    vmBadge.value = `${info.vm_running}/${info.vm_total}`
+  } catch {}
+}
+let badgeTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => { loadVMCount(); badgeTimer = setInterval(loadVMCount, 10000) })
+onBeforeUnmount(() => { if (badgeTimer) clearInterval(badgeTimer) })
 
 const menuItems = [
   { key: 'dashboard', label: '概览', icon: IconDashboard },
@@ -137,6 +150,8 @@ const onMenuClick = (key: string) => router.push({ name: key })
 
 .nav-icon { font-size: 18px; flex-shrink: 0; color: #636366; }
 .nav-label { font-weight: 500; }
+.nav-badge { margin-left: auto; font-size: 10px; background: rgba(0,0,0,0.08); color: #636366; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+.nav-item.active .nav-badge { background: rgba(255,255,255,0.2); color: #fff; }
 
 .sidebar-bottom {
   padding: 12px;

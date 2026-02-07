@@ -27,6 +27,14 @@
           <a-table-column title="子网" data-index="subnet">
             <template #cell="{ record }"><code>{{ record.subnet || '-' }}</code></template>
           </a-table-column>
+          <a-table-column title="使用中的虚拟机">
+            <template #cell="{ record }">
+              <template v-if="netVMMap[record.name]?.length">
+                <a-tag v-for="vm in netVMMap[record.name]" :key="vm" size="small" color="arcoblue" style="margin:1px">{{ vm }}</a-tag>
+              </template>
+              <span v-else style="color:#8e8e93">-</span>
+            </template>
+          </a-table-column>
           <a-table-column title="操作" :width="200">
             <template #cell="{ record }">
               <a-space>
@@ -80,6 +88,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { networkApi, type Network } from '../../api/network'
+import { vmApi } from '../../api/vm'
 import { Message } from '@arco-design/web-vue'
 
 const networks = ref<Network[]>([])
@@ -87,6 +96,26 @@ const loading = ref(false)
 const showCreate = ref(false)
 const creating = ref(false)
 const form = reactive({ name: '', subnet: '', netmask: '', dhcp_start: '', dhcp_end: '' })
+const netVMMap = ref<Record<string, string[]>>({})
+
+const loadNetVMs = async () => {
+  try {
+    const vms = await vmApi.list()
+    const map: Record<string, string[]> = {}
+    for (const vm of vms) {
+      try {
+        const d = await vmApi.detail(vm.name)
+        for (const nic of d.nics) {
+          if (nic.type === 'network' && nic.source) {
+            if (!map[nic.source]) map[nic.source] = []
+            map[nic.source].push(vm.name)
+          }
+        }
+      } catch {}
+    }
+    netVMMap.value = map
+  } catch {}
+}
 
 const load = async () => {
   loading.value = true
@@ -111,7 +140,7 @@ const onCreate = async () => {
   creating.value = false
 }
 
-onMounted(load)
+onMounted(() => { load(); loadNetVMs() })
 </script>
 
 <style scoped>

@@ -96,6 +96,29 @@
       </div>
     </div>
 
+    <!-- 虚拟机资源排行 -->
+    <div class="info-section" v-if="runningVMs.length">
+      <div class="section-title">虚拟机资源占用</div>
+      <div class="info-card">
+        <div class="vm-rank-row vm-rank-header">
+          <span class="vm-rank-name">名称</span>
+          <span class="vm-rank-bar">CPU</span>
+          <span class="vm-rank-bar">内存</span>
+        </div>
+        <div class="vm-rank-row" v-for="vm in runningVMs" :key="vm.name">
+          <span class="vm-rank-name">{{ vm.name }}</span>
+          <span class="vm-rank-bar">
+            <div class="mini-bar-wrap"><div class="mini-bar" :style="{ width: vm.cpu_usage + '%', background: getColor(vm.cpu_usage) }"></div></div>
+            <span class="vm-rank-pct">{{ vm.cpu_usage }}%</span>
+          </span>
+          <span class="vm-rank-bar">
+            <div class="mini-bar-wrap"><div class="mini-bar" :style="{ width: (vm.mem_used && vm.memory ? vm.mem_used / vm.memory * 100 : 0) + '%', background: '#FF9500' }"></div></div>
+            <span class="vm-rank-pct">{{ vm.mem_used >= 1024 ? (vm.mem_used / 1024).toFixed(1) + 'G' : vm.mem_used + 'M' }} / {{ vm.memory >= 1024 ? (vm.memory / 1024).toFixed(1) + 'G' : vm.memory + 'M' }}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- 系统信息 -->
     <div class="info-section">
       <div class="section-title">系统信息</div>
@@ -112,6 +135,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { hostApi, type HostInfo } from '../../api/host'
+import { vmApi, type VM } from '../../api/vm'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { GaugeChart, LineChart } from 'echarts/charts'
@@ -124,6 +148,8 @@ import {
 use([CanvasRenderer, GaugeChart, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
 const host = ref<HostInfo | null>(null)
+const allVMs = ref<VM[]>([])
+const runningVMs = computed(() => allVMs.value.filter(v => v.state === 'running').sort((a, b) => b.cpu_usage - a.cpu_usage))
 const cpuHistory = ref<number[]>([])
 const memHistory = ref<number[]>([])
 const timeLabels = ref<string[]>([])
@@ -202,6 +228,7 @@ const load = async () => {
   if (!mounted) return
   try {
     host.value = await hostApi.info()
+    try { allVMs.value = await vmApi.list() } catch {}
     const now = new Date()
     const label = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
     cpuHistory.value.push(host.value.cpu_usage)
@@ -356,4 +383,13 @@ onBeforeUnmount(() => { mounted = false; if (timer) { clearInterval(timer); time
 .info-row:last-child { border-bottom: none; }
 .info-label { font-size: 13px; color: #1c1c1e; font-weight: 500; }
 .info-value { font-size: 13px; color: #8e8e93; max-width: 60%; text-align: right; word-break: break-all; }
+
+.vm-rank-row { display: flex; align-items: center; padding: 10px 20px; border-bottom: 0.5px solid rgba(0,0,0,0.04); gap: 12px; }
+.vm-rank-row:last-child { border-bottom: none; }
+.vm-rank-header { font-size: 11px; color: #8e8e93; font-weight: 600; text-transform: uppercase; }
+.vm-rank-name { width: 140px; font-size: 13px; font-weight: 500; color: #1c1c1e; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-rank-bar { flex: 1; display: flex; align-items: center; gap: 8px; }
+.vm-rank-pct { font-size: 11px; color: #8e8e93; min-width: 60px; text-align: right; }
+.mini-bar-wrap { flex: 1; height: 6px; background: rgba(0,0,0,0.04); border-radius: 3px; overflow: hidden; }
+.mini-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
 </style>

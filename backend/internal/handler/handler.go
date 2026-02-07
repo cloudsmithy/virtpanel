@@ -3,6 +3,7 @@ package handler
 import (
 	"net"
 	"net/http"
+	"sync"
 
 	"virtpanel/internal/model"
 	"virtpanel/internal/service"
@@ -225,22 +226,31 @@ func (h *Handler) BatchAction(c *gin.Context) {
 		return
 	}
 	errors := map[string]string{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, name := range req.Names {
-		var err error
-		switch req.Action {
-		case "start":
-			err = h.svc.StartVM(name)
-		case "shutdown":
-			err = h.svc.ShutdownVM(name)
-		case "destroy":
-			err = h.svc.DestroyVM(name)
-		case "delete":
-			err = h.svc.DeleteVM(name)
-		}
-		if err != nil {
-			errors[name] = err.Error()
-		}
+		wg.Add(1)
+		go func(n string) {
+			defer wg.Done()
+			var err error
+			switch req.Action {
+			case "start":
+				err = h.svc.StartVM(n)
+			case "shutdown":
+				err = h.svc.ShutdownVM(n)
+			case "destroy":
+				err = h.svc.DestroyVM(n)
+			case "delete":
+				err = h.svc.DeleteVM(n)
+			}
+			if err != nil {
+				mu.Lock()
+				errors[n] = err.Error()
+				mu.Unlock()
+			}
+		}(name)
 	}
+	wg.Wait()
 	if len(errors) > 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "partial", "errors": errors})
 		return
