@@ -24,6 +24,9 @@
         <a-button v-if="detail?.state === 'running'" size="small" @click="doAction('suspend')">暂停</a-button>
         <a-button v-if="detail?.state === 'paused'" size="small" type="primary" @click="doAction('resume')">恢复</a-button>
         <a-button v-if="detail?.state === 'running'" @click="openVNC">控制台</a-button>
+        <a-button v-if="detail?.state === 'shutoff'" size="small" @click="openEdit()">编辑</a-button>
+        <a-button v-if="detail?.state === 'shutoff'" size="small" @click="showClone = true">克隆</a-button>
+        <a-button v-if="detail?.state === 'shutoff'" size="small" @click="showRename = true">重命名</a-button>
         <a-button @click="loadDetail">刷新</a-button>
       </a-space>
     </div>
@@ -197,6 +200,22 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <a-modal v-model:visible="showClone" title="克隆虚拟机" @ok="onClone" :ok-loading="cloning" unmount-on-close>
+      <a-form :model="cloneForm" layout="vertical">
+        <a-form-item label="新虚拟机名称" required>
+          <a-input v-model="cloneForm.newName" :placeholder="vmName + '-clone'" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="showRename" title="重命名虚拟机" @ok="onRename" :ok-loading="renaming" unmount-on-close>
+      <a-form :model="renameForm" layout="vertical">
+        <a-form-item label="新名称" required>
+          <a-input v-model="renameForm.newName" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -208,6 +227,7 @@ import { isoApi, type ISOFile } from '../../api/iso'
 import { networkApi, type Network } from '../../api/network'
 import { hostApi } from '../../api/host'
 import { bridgeApi, type Bridge } from '../../api/bridge'
+import { errMsg } from '../../api/http'
 import { Message } from '@arco-design/web-vue'
 import { IconLeft } from '@arco-design/web-vue/es/icon'
 
@@ -232,6 +252,12 @@ const bridges = ref<Bridge[]>([])
 const showEdit = ref(false)
 const editing = ref(false)
 const editForm = reactive({ cpu: 1, memory: 1024 })
+const showClone = ref(false)
+const cloning = ref(false)
+const cloneForm = reactive({ newName: '' })
+const showRename = ref(false)
+const renaming = ref(false)
+const renameForm = reactive({ newName: '' })
 
 const stateText = (s: string) => ({ running: '运行中', shutoff: '已关机', paused: '已暂停' }[s] || s)
 
@@ -246,11 +272,11 @@ const infoCards = computed(() => {
 })
 
 const loadDetail = async () => {
-  try { detail.value = await vmApi.detail(vmName.value) } catch { Message.error('加载失败') }
+  try { detail.value = await vmApi.detail(vmName.value) } catch (e: any) { Message.error(errMsg(e, '加载失败')) }
   try { const vm = await vmApi.get(vmName.value); vmStats.value = { cpu_usage: vm.cpu_usage, mem_used: vm.mem_used } } catch {}
 }
 const hasISO = computed(() => detail.value?.disks?.some(d => d.device === 'cdrom' && d.source) ?? false)
-const doFinishInstall = async () => { try { await vmApi.finishInstall(vmName.value); Message.success('已完成安装设置，下次启动将从硬盘引导'); loadDetail() } catch { Message.error('操作失败') } }
+const doFinishInstall = async () => { try { await vmApi.finishInstall(vmName.value); Message.success('已完成安装设置，下次启动将从硬盘引导'); loadDetail() } catch(e: any) { Message.error(errMsg(e, '操作失败')) } }
 
 const pendingState = ref('')
 
@@ -269,10 +295,10 @@ const doAction = async (action: 'start' | 'shutdown' | 'destroy' | 'reboot' | 's
       const done = (action === 'shutdown' && s === 'shutoff') || (action === 'destroy' && s === 'shutoff') || (action === 'start' && s === 'running') || (action === 'reboot' && tries > 2) || (action === 'suspend' && s === 'paused') || (action === 'resume' && s === 'running')
       if (done || tries >= 20) { clearInterval(poll); pendingState.value = '' }
     }, 2000)
-  } catch { Message.error('操作失败') }
+  } catch(e: any) { Message.error(errMsg(e, '操作失败')) }
 }
 const loadAutostart = async () => { try { const r = await vmApi.getAutostart(vmName.value); autostart.value = r.autostart } catch {} }
-const onAutostartChange = async (v: boolean | string | number) => { try { await vmApi.setAutostart(vmName.value, v as boolean); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostart.value = !v } }
+const onAutostartChange = async (v: boolean | string | number) => { try { await vmApi.setAutostart(vmName.value, v as boolean); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch(e: any) { Message.error(errMsg(e, '设置失败')); autostart.value = !v } }
 const openVNC = () => {
   const route = router.resolve({ name: 'vnc', params: { name: vmName.value } })
   window.open(route.href, '_blank')
@@ -290,7 +316,7 @@ const openEdit = () => {
 }
 const onEdit = async () => {
   editing.value = true
-  try { await vmApi.update(vmName.value, editForm); Message.success('修改成功'); showEdit.value = false; loadDetail() } catch { Message.error('修改失败') }
+  try { await vmApi.update(vmName.value, editForm); Message.success('修改成功'); showEdit.value = false; loadDetail() } catch(e: any) { Message.error(errMsg(e, '修改失败')) }
   editing.value = false
 }
 
@@ -298,7 +324,7 @@ const openAttachISO = () => { loadISOs(); selectedISO.value = ''; showAttachISO.
 
 const onAttachDisk = async () => {
   attaching.value = true
-  try { await vmApi.attachDisk(vmName.value, diskForm); Message.success('挂载成功'); showAttachDisk.value = false; Object.assign(diskForm, { source: '', target: 'vdb', bus: 'virtio' }); loadDetail() } catch { Message.error('挂载失败') }
+  try { await vmApi.attachDisk(vmName.value, diskForm); Message.success('挂载成功'); showAttachDisk.value = false; Object.assign(diskForm, { source: '', target: 'vdb', bus: 'virtio' }); loadDetail() } catch(e: any) { Message.error(errMsg(e, '挂载失败')) }
   attaching.value = false
 }
 const onAttachISO = async () => {
@@ -308,17 +334,40 @@ const onAttachISO = async () => {
     await vmApi.attachISO(vmName.value, selectedISO.value)
     Message.success(detail.value?.state === 'running' ? '挂载成功，需重启生效' : '挂载成功')
     showAttachISO.value = false; loadDetail()
-  } catch { Message.error('挂载失败') }
+  } catch(e: any) { Message.error(errMsg(e, '挂载失败')) }
   attaching.value = false
 }
-const doDetachISO = async () => { try { await vmApi.detachISO(vmName.value); Message.success('已弹出'); loadDetail() } catch { Message.error('操作失败') } }
-const doDetachDisk = async (target: string) => { try { await vmApi.detachDisk(vmName.value, target); Message.success('已卸载'); loadDetail() } catch { Message.error('卸载失败') } }
+const doDetachISO = async () => { try { await vmApi.detachISO(vmName.value); Message.success('已弹出'); loadDetail() } catch(e: any) { Message.error(errMsg(e, '操作失败')) } }
+const doDetachDisk = async (target: string) => { try { await vmApi.detachDisk(vmName.value, target); Message.success('已卸载'); loadDetail() } catch(e: any) { Message.error(errMsg(e, '卸载失败')) } }
 const onAttachNIC = async () => {
   attaching.value = true
-  try { await vmApi.attachNIC(vmName.value, nicForm); Message.success('添加成功'); showAttachNIC.value = false; Object.assign(nicForm, { mode: 'network', network: '', bridge: '', dev: '', model: 'virtio' }); loadDetail() } catch { Message.error('添加失败') }
+  try { await vmApi.attachNIC(vmName.value, nicForm); Message.success('添加成功'); showAttachNIC.value = false; Object.assign(nicForm, { mode: 'network', network: '', bridge: '', dev: '', model: 'virtio' }); loadDetail() } catch(e: any) { Message.error(errMsg(e, '添加失败')) }
   attaching.value = false
 }
-const doDetachNIC = async (mac: string) => { try { await vmApi.detachNIC(vmName.value, mac); Message.success('已移除'); loadDetail() } catch { Message.error('移除失败') } }
+const doDetachNIC = async (mac: string) => { try { await vmApi.detachNIC(vmName.value, mac); Message.success('已移除'); loadDetail() } catch(e: any) { Message.error(errMsg(e, '移除失败')) } }
+
+const onClone = async () => {
+  if (!cloneForm.newName.trim()) { Message.warning('请输入名称'); return }
+  cloning.value = true
+  const msgId = `clone-${Date.now()}`
+  Message.loading({ content: `正在克隆，复制磁盘中...`, id: msgId, duration: 0 })
+  try {
+    await vmApi.clone(vmName.value, cloneForm.newName)
+    Message.success({ content: '克隆成功', id: msgId }); showClone.value = false
+  } catch(e: any) { Message.error({ content: errMsg(e, '克隆失败'), id: msgId }) }
+  cloning.value = false
+}
+
+const onRename = async () => {
+  if (!renameForm.newName.trim()) { Message.warning('请输入名称'); return }
+  renaming.value = true
+  try {
+    await vmApi.rename(vmName.value, renameForm.newName)
+    Message.success('重命名成功'); showRename.value = false
+    router.replace({ name: 'vm-detail', params: { name: renameForm.newName } })
+  } catch(e: any) { Message.error(errMsg(e, '重命名失败')) }
+  renaming.value = false
+}
 
 watch(vmName, () => { loadDetail(); loadNetworks(); loadHostNICs(); loadBridges(); loadAutostart() })
 onMounted(() => { loadDetail(); loadNetworks(); loadHostNICs(); loadBridges(); loadAutostart() })

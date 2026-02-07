@@ -41,16 +41,16 @@
 ```bash
 apt update
 
-# 安装 QEMU、libvirt、磁盘工具
-apt install -y qemu-kvm qemu-utils libvirt-daemon-system virtinst
+# 安装 QEMU、libvirt、磁盘工具、NAT 网络依赖
+apt install -y qemu-kvm qemu-utils libvirt-daemon-system virtinst dnsmasq-base
 
-# 启动 libvirt 相关服务
-systemctl start libvirtd
-systemctl start virtlogd
+# 启动并设置开机自启
+systemctl enable --now libvirtd virtlogd
 
 # 如果 systemctl 不可用（如容器环境），手动启动守护进程
 libvirtd -d
 virtlogd -d
+virsh net-start default  # 手动启动时需要手动激活 NAT 网络
 
 # 确认 KVM 设备存在
 ls -la /dev/kvm
@@ -180,6 +180,7 @@ server {
 | `clone failed:` (空错误) | virt-clone 未安装 | `apt install -y virtinst` |
 | `create disk failed:` (空错误) | qemu-img 未安装 | `apt install -y qemu-utils` |
 | `failed to initialize kvm: Permission denied` | /dev/kvm 权限不足 | `chmod 666 /dev/kvm` 或将用户加入 kvm 组 |
+| `network 'default' is not active` | NAT 网络未激活 | `apt install -y dnsmasq-base && virsh net-start default` |
 
 ## License
 

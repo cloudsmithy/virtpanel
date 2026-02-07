@@ -80,6 +80,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { vmApi, type VM } from '../../api/vm'
 import { snapshotApi, type Snapshot } from '../../api/snapshot'
 import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 
 const vms = ref<VM[]>([])
 const selectedVM = ref('')
@@ -111,25 +112,27 @@ const onRevert = async () => {
   try {
     if (revertForm.mode === 'new') {
       if (!revertForm.newName.trim()) { Message.warning('请输入新虚拟机名称'); reverting.value = false; return }
+      const msgId = `revert-${Date.now()}`
+      Message.loading({ content: '正在还原到新虚拟机，复制磁盘中...', id: msgId, duration: 0 })
       await snapshotApi.revertToNew(selectedVM.value, revertForm.snap, revertForm.newName)
-      Message.success('已还原到新虚拟机 ' + revertForm.newName)
+      Message.success({ content: '已还原到新虚拟机 ' + revertForm.newName, id: msgId })
     } else {
       await snapshotApi.revert(selectedVM.value, revertForm.snap)
       Message.success('已恢复')
     }
     showRevert.value = false; loadSnapshots()
-  } catch { Message.error('恢复失败') }
+  } catch(e: any) { Message.error(errMsg(e, '恢复失败')) }
   reverting.value = false
 }
 const doDelete = async (snap: string) => {
-  try { await snapshotApi.delete(selectedVM.value, snap); Message.success('已删除'); loadSnapshots() } catch { Message.error('删除失败') }
+  try { await snapshotApi.delete(selectedVM.value, snap); Message.success('已删除'); loadSnapshots() } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 const onCreate = async () => {
   creating.value = true
   try {
     await snapshotApi.create(selectedVM.value, form); Message.success('创建成功'); showCreate.value = false
     Object.assign(form, { name: '', description: '' }); loadSnapshots()
-  } catch { Message.error('创建失败') }
+  } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creating.value = false
 }
 

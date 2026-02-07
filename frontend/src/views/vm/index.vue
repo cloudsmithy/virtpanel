@@ -11,10 +11,14 @@
           </a-select>
           <a-switch v-model="autoRefresh" checked-text="自动刷新" unchecked-text="自动刷新" />
           <template v-if="selectedKeys.length">
-            <a-button size="small" type="primary" @click="doBatch('start')">批量启动</a-button>
-            <a-button size="small" status="warning" @click="doBatch('shutdown')">批量关机</a-button>
-            <a-popconfirm content="确认批量删除？" @ok="doBatch('delete')">
-              <a-button size="small" status="danger">批量删除</a-button>
+            <a-popconfirm :content="`确认批量启动 ${selectedKeys.length} 台虚拟机？`" @ok="doBatch('start')">
+              <a-button size="small" type="primary">批量启动 ({{ selectedKeys.length }})</a-button>
+            </a-popconfirm>
+            <a-popconfirm :content="`确认批量关机 ${selectedKeys.length} 台虚拟机？`" @ok="doBatch('shutdown')">
+              <a-button size="small" status="warning">批量关机 ({{ selectedKeys.length }})</a-button>
+            </a-popconfirm>
+            <a-popconfirm :content="`确认批量删除 ${selectedKeys.length} 台虚拟机？`" @ok="doBatch('delete')">
+              <a-button size="small" status="danger">批量删除 ({{ selectedKeys.length }})</a-button>
             </a-popconfirm>
           </template>
           <a-button @click="showImport = true">导入</a-button>
@@ -319,6 +323,7 @@ import { useRouter } from 'vue-router'
 import { vmApi, type VM } from '../../api/vm'
 import { hostApi } from '../../api/host'
 import { isoApi, type ISOFile } from '../../api/iso'
+import { errMsg } from '../../api/http'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconCheck } from '@arco-design/web-vue/es/icon'
 
@@ -378,7 +383,7 @@ const loadAutostarts = async () => {
   autostartMap.value = map
 }
 const toggleAutostart = async (name: string, v: boolean) => {
-  try { await vmApi.setAutostart(name, v); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch { Message.error('设置失败'); autostartMap.value[name] = !v }
+  try { await vmApi.setAutostart(name, v); Message.success(v ? '已开启自动启动' : '已关闭自动启动') } catch(e: any) { Message.error(errMsg(e, '设置失败')); autostartMap.value[name] = !v }
 }
 
 // OS presets
@@ -470,7 +475,7 @@ const doAction = async (name: string, action: 'start' | 'shutdown' | 'destroy' |
       const done = !vm || (action === 'shutdown' && vm.state === 'shutoff') || (action === 'destroy' && vm.state === 'shutoff') || (action === 'start' && vm.state === 'running') || (action === 'reboot' && tries > 2) || (action === 'suspend' && vm.state === 'paused') || (action === 'resume' && vm.state === 'running')
       if (done || tries >= 20) { clearInterval(poll); delete pendingStates.value[name] }
     }, 2000)
-  } catch { Message.error('操作失败') }
+  } catch(e: any) { Message.error(errMsg(e, '操作失败')) }
 }
 
 const doDelete = async (name: string) => {
@@ -478,7 +483,7 @@ const doDelete = async (name: string) => {
     await vmApi.delete(name)
     Message.success('已删除')
     loadVMs()
-  } catch { Message.error('删除失败') }
+  } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 
 const openCreate = async () => {
@@ -517,7 +522,7 @@ const onCreate = async () => {
     Message.success('创建成功')
     showCreate.value = false
     loadVMs()
-  } catch { Message.error('创建失败') }
+  } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creating.value = false
 }
 
@@ -531,7 +536,7 @@ const onEdit = async () => {
   try {
     await vmApi.update(editForm.name, { cpu: editForm.cpu, memory: editForm.memory })
     Message.success('修改成功'); showEdit.value = false; loadVMs()
-  } catch { Message.error('修改失败') }
+  } catch(e: any) { Message.error(errMsg(e, '修改失败')) }
   editing.value = false
 }
 
@@ -542,10 +547,12 @@ const openClone = (name: string) => {
 
 const onClone = async () => {
   cloning.value = true
+  const msgId = `clone-${Date.now()}`
+  Message.loading({ content: `正在克隆 ${cloneForm.srcName}，复制磁盘中...`, id: msgId, duration: 0 })
   try {
     await vmApi.clone(cloneForm.srcName, cloneForm.newName)
-    Message.success('克隆成功'); showClone.value = false; loadVMs()
-  } catch { Message.error('克隆失败') }
+    Message.success({ content: '克隆成功', id: msgId }); showClone.value = false; loadVMs()
+  } catch(e: any) { Message.error({ content: errMsg(e, '克隆失败'), id: msgId }) }
   cloning.value = false
 }
 
@@ -558,7 +565,7 @@ const onRename = async () => {
   try {
     await vmApi.rename(renameForm.oldName, renameForm.newName)
     Message.success('重命名成功'); showRename.value = false; loadVMs()
-  } catch { Message.error('重命名失败') }
+  } catch(e: any) { Message.error(errMsg(e, '重命名失败')) }
   renaming.value = false
 }
 
@@ -568,7 +575,7 @@ const onImport = async () => {
   try {
     await vmApi.import({ name: importForm.name, disk_path: importForm.diskPath, cpu: importForm.cpu, memory: importForm.memory, disk_bus: importForm.diskBus })
     Message.success('导入成功'); showImport.value = false; Object.assign(importForm, { name: '', diskPath: '', cpu: 2, memory: 2048, diskBus: 'virtio' }); loadVMs()
-  } catch { Message.error('导入失败') }
+  } catch(e: any) { Message.error(errMsg(e, '导入失败')) }
   importing.value = false
 }
 
@@ -576,7 +583,7 @@ const doBatch = async (action: string) => {
   try {
     await vmApi.batch(selectedKeys.value, action)
     Message.success('操作完成'); selectedKeys.value = []; loadVMs()
-  } catch { Message.error('操作失败') }
+  } catch(e: any) { Message.error(errMsg(e, '操作失败')) }
 }
 
 onMounted(loadVMs)

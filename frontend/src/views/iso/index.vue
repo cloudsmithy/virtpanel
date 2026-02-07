@@ -46,6 +46,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { isoApi, type ISOFile } from '../../api/iso'
 import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 import type { CancelTokenSource } from 'axios'
 
 interface UploadTask { id: number; name: string; percent: number; cancel: CancelTokenSource }
@@ -78,7 +79,7 @@ const cancelUpload = (id: number) => {
 }
 
 const doDelete = async (name: string) => {
-  try { await isoApi.delete(name); Message.success('已删除'); load() } catch { Message.error('删除失败') }
+  try { await isoApi.delete(name); Message.success('已删除'); load() } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 
 onMounted(load)

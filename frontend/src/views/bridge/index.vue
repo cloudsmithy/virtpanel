@@ -57,6 +57,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { bridgeApi, type Bridge } from '../../api/bridge'
 import { hostApi } from '../../api/host'
 import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 
 const bridges = ref<Bridge[]>([])
 const loading = ref(false)
@@ -71,13 +72,13 @@ const loadNICs = async () => { try { hostNICs.value = await hostApi.nics() } cat
 const onCreate = async () => {
   if (!form.name.trim()) { Message.warning('请输入名称'); return }
   creating.value = true
-  try { await bridgeApi.create(form); Message.success('创建成功'); showCreate.value = false; Object.assign(form, { name: '', slave_nic: '' }); load() } catch { Message.error('创建失败') }
+  try { await bridgeApi.create(form); Message.success('创建成功'); showCreate.value = false; Object.assign(form, { name: '', slave_nic: '' }); load() } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creating.value = false
 }
 
 const doDelete = async (name: string) => {
   const short = name.replace(/^vp-/, '')
-  try { await bridgeApi.delete(short); Message.success('已删除'); load() } catch { Message.error('删除失败') }
+  try { await bridgeApi.delete(short); Message.success('已删除'); load() } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 
 onMounted(() => { load(); loadNICs() })

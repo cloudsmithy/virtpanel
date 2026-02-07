@@ -90,6 +90,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { networkApi, type Network } from '../../api/network'
 import { vmApi } from '../../api/vm'
 import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 
 const networks = ref<Network[]>([])
 const loading = ref(false)
@@ -102,16 +103,16 @@ const loadNetVMs = async () => {
   try {
     const vms = await vmApi.list()
     const map: Record<string, string[]> = {}
-    for (const vm of vms) {
-      try {
-        const d = await vmApi.detail(vm.name)
-        for (const nic of d.nics) {
+    const details = await Promise.allSettled(vms.map(vm => vmApi.detail(vm.name).then(d => ({ name: vm.name, nics: d.nics }))))
+    for (const r of details) {
+      if (r.status === 'fulfilled') {
+        for (const nic of r.value.nics) {
           if (nic.type === 'network' && nic.source) {
             if (!map[nic.source]) map[nic.source] = []
-            map[nic.source].push(vm.name)
+            if (!map[nic.source].includes(r.value.name)) map[nic.source].push(r.value.name)
           }
         }
-      } catch {}
+      }
     }
     netVMMap.value = map
   } catch {}
@@ -124,11 +125,11 @@ const load = async () => {
 }
 
 const doAction = async (name: string, action: 'start' | 'stop') => {
-  try { await networkApi[action](name); Message.success('操作成功'); load() } catch { Message.error('操作失败') }
+  try { await networkApi[action](name); Message.success('操作成功'); load() } catch(e: any) { Message.error(errMsg(e, '操作失败')) }
 }
 
 const doDelete = async (name: string) => {
-  try { await networkApi.delete(name); Message.success('已删除'); load() } catch { Message.error('删除失败') }
+  try { await networkApi.delete(name); Message.success('已删除'); load() } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 
 const onCreate = async () => {
@@ -136,7 +137,7 @@ const onCreate = async () => {
   try {
     await networkApi.create(form); Message.success('创建成功'); showCreate.value = false
     Object.assign(form, { name: '', subnet: '', netmask: '', dhcp_start: '', dhcp_end: '' }); load()
-  } catch { Message.error('创建失败') }
+  } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creating.value = false
 }
 

@@ -111,6 +111,7 @@ import { storageApi, type StoragePool } from '../../api/storage'
 import { volumeApi, type StorageVolume } from '../../api/volume'
 import { vmApi } from '../../api/vm'
 import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 
 const pools = ref<StoragePool[]>([])
 const loading = ref(false)
@@ -128,20 +129,20 @@ const loadPoolVMs = async () => {
   try {
     const vms = await vmApi.list()
     const map: Record<string, string[]> = {}
-    for (const vm of vms) {
-      try {
-        const d = await vmApi.detail(vm.name)
-        for (const disk of d.disks) {
+    const details = await Promise.allSettled(vms.map(vm => vmApi.detail(vm.name).then(d => ({ name: vm.name, disks: d.disks }))))
+    for (const r of details) {
+      if (r.status === 'fulfilled') {
+        for (const disk of r.value.disks) {
           if (disk.device === 'disk' && disk.source) {
             for (const p of pools.value) {
               if (p.path && disk.source.startsWith(p.path)) {
                 if (!map[p.name]) map[p.name] = []
-                if (!map[p.name].includes(vm.name)) map[p.name].push(vm.name)
+                if (!map[p.name].includes(r.value.name)) map[p.name].push(r.value.name)
               }
             }
           }
         }
-      } catch {}
+      }
     }
     poolVMMap.value = map
   } catch {}
@@ -159,24 +160,24 @@ const load = async () => { loading.value = true; try { pools.value = await stora
 const loadVolumes = async (pool: string) => { volLoading.value[pool] = true; try { volumes.value[pool] = await volumeApi.list(pool) } catch { volumes.value[pool] = [] } volLoading.value[pool] = false }
 
 const doAction = async (name: string, action: 'start' | 'stop') => {
-  try { await storageApi[action](name); Message.success('操作成功'); load() } catch { Message.error('操作失败') }
+  try { await storageApi[action](name); Message.success('操作成功'); load() } catch(e: any) { Message.error(errMsg(e, '操作失败')) }
 }
 const doDelete = async (name: string) => {
-  try { await storageApi.delete(name); Message.success('已删除'); load() } catch { Message.error('删除失败') }
+  try { await storageApi.delete(name); Message.success('已删除'); load() } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 const onCreate = async () => {
   creating.value = true
-  try { await storageApi.create(form); Message.success('创建成功'); showCreate.value = false; Object.assign(form, { name: '', path: '' }); load() } catch { Message.error('创建失败') }
+  try { await storageApi.create(form); Message.success('创建成功'); showCreate.value = false; Object.assign(form, { name: '', path: '' }); load() } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creating.value = false
 }
 const openCreateVol = (pool: string) => { volForm.pool = pool; volForm.name = ''; volForm.capacity = 20; volForm.format = 'qcow2'; showCreateVol.value = true }
 const onCreateVol = async () => {
   creatingVol.value = true
-  try { await volumeApi.create(volForm); Message.success('创建成功'); showCreateVol.value = false; loadVolumes(volForm.pool) } catch { Message.error('创建失败') }
+  try { await volumeApi.create(volForm); Message.success('创建成功'); showCreateVol.value = false; loadVolumes(volForm.pool) } catch(e: any) { Message.error(errMsg(e, '创建失败')) }
   creatingVol.value = false
 }
 const doDeleteVol = async (pool: string, vol: string) => {
-  try { await volumeApi.delete(pool, vol); Message.success('已删除'); loadVolumes(pool) } catch { Message.error('删除失败') }
+  try { await volumeApi.delete(pool, vol); Message.success('已删除'); loadVolumes(pool) } catch(e: any) { Message.error(errMsg(e, '删除失败')) }
 }
 
 onMounted(load)
