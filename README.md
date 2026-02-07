@@ -17,6 +17,7 @@
 - 🗄️ **存储** — 存储池和存储卷管理
 - 📊 **仪表盘** — 主机 CPU / 内存 / 磁盘 / 负载概览，虚拟机实时 CPU 和内存使用率
 - ⚡ **批量操作** — 批量启动 / 关机 / 强制关机 / 删除
+- 📤 **ISO 管理** — 多文件并行上传，独立进度显示，支持取消
 
 ## 技术栈
 
@@ -25,12 +26,62 @@
 | 后端 | Go + Gin + go-libvirt |
 | 前端 | Vue 3 + TypeScript + Arco Design + noVNC |
 | 虚拟化 | KVM / QEMU / libvirt |
+| 引导方式 | BIOS (SeaBIOS)，仅支持 x86_64 |
 
 ## 环境要求
 
-- Linux 主机，已安装 libvirt、QEMU-KVM
-- Go 1.22+
-- Node.js 18+、pnpm
+- Linux x86_64 主机，支持硬件虚拟化（Intel VT-x / AMD-V）
+- Go 1.22+（编译后端）
+- Node.js 18+、pnpm（编译前端）
+
+## 安装依赖
+
+### Debian / Ubuntu
+
+```bash
+apt update
+
+# 安装 QEMU、libvirt、磁盘工具
+apt install -y qemu-kvm qemu-utils libvirt-daemon-system
+
+# 启动 libvirt 相关服务
+systemctl start libvirtd
+systemctl start virtlogd
+
+# 如果 systemctl 不可用（如容器环境），手动启动守护进程
+libvirtd -d
+virtlogd -d
+
+# 确认 KVM 设备存在
+ls -la /dev/kvm
+```
+
+### KVM 权限
+
+如果创建虚拟机时报 `Permission denied` 访问 `/dev/kvm`，需要确保 libvirt 的 QEMU 进程有权限：
+
+```bash
+# 方案一：将 libvirt-qemu 用户加入 kvm 组
+usermod -aG kvm libvirt-qemu
+systemctl restart libvirtd
+
+# 方案二：直接开放权限（快速但不推荐用于生产）
+chmod 666 /dev/kvm
+```
+
+### 验证环境
+
+```bash
+# 确认 KVM 可用
+virsh version
+
+# 确认 qemu-img 可用（创建磁盘需要）
+qemu-img --version
+
+# 确认 libvirt socket 存在
+ls /var/run/libvirt/libvirt-sock
+ls /run/libvirt/virtlogd-sock
+```
 
 ## 快速开始
 
@@ -117,6 +168,15 @@ server {
 | GET | /ws/vnc/:name | VNC WebSocket |
 
 完整路由见 `backend/cmd/main.go`。
+
+## 常见问题
+
+| 错误 | 原因 | 解决 |
+|------|------|------|
+| `dial unix /var/run/libvirt/libvirt-sock: no such file` | libvirtd 未启动 | `systemctl start libvirtd` 或 `libvirtd -d` |
+| `connect socket to '/run/libvirt/virtlogd-sock': No such file` | virtlogd 未启动 | `systemctl start virtlogd` 或 `virtlogd -d` |
+| `create disk failed:` (空错误) | qemu-img 未安装 | `apt install -y qemu-utils` |
+| `failed to initialize kvm: Permission denied` | /dev/kvm 权限不足 | `chmod 666 /dev/kvm` 或将用户加入 kvm 组 |
 
 ## License
 
