@@ -57,7 +57,7 @@ const loading = ref(false)
 let taskId = 0
 const uploadTasks = ref<UploadTask[]>([])
 
-const load = async () => { loading.value = true; try { isos.value = await isoApi.list() } catch {} loading.value = false }
+const load = async () => { loading.value = true; try { isos.value = await isoApi.list() } catch(e: any) { Message.error(errMsg(e, '加载失败')) } loading.value = false }
 
 const onUpload = async (option: any) => {
   const file = option.fileItem.file!

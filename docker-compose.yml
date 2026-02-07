@@ -1,0 +1,17 @@
+services:
+  virtpanel:
+    build: .
+    container_name: virtpanel
+    privileged: true
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      # Libvirt data persistence
+      - /var/lib/libvirt:/var/lib/libvirt
+      # KVM device
+      - /dev/kvm:/dev/kvm
+      # Port forward rules persistence
+      - virtpanel-config:/etc/virtpanel
+
+volumes:
+  virtpanel-config:

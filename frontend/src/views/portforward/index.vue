@@ -100,7 +100,7 @@ const form = reactive({
   comment: '',
 })
 
-const load = async () => { loading.value = true; try { rules.value = await portForwardApi.list() || [] } catch {} loading.value = false }
+const load = async () => { loading.value = true; try { rules.value = await portForwardApi.list() || [] } catch(e: any) { Message.error(errMsg(e, '加载失败')) } loading.value = false }
 
 const loadVMs = async () => {
   try {

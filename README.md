@@ -87,6 +87,19 @@ ls /run/libvirt/virtlogd-sock
 
 ## 快速开始
 
+### Docker 部署（推荐）
+
+```bash
+git clone <repo-url> && cd virtpanel
+docker compose up -d
+```
+
+访问 `http://<宿主机IP>`。
+
+> 需要 `privileged` 和 `network_mode: host` 才能管理 KVM 和网络。
+
+### 手动部署
+
 ```bash
 # 后端
 cd backend
@@ -168,6 +181,10 @@ server {
 | POST | /api/vms/import | 导入 |
 | POST | /api/vms/batch | 批量操作 |
 | GET | /ws/vnc/:name | VNC WebSocket |
+| GET | /api/port-forwards | 端口转发列表 |
+| POST | /api/port-forwards | 添加端口转发 |
+| DELETE | /api/port-forwards/:id | 删除端口转发 |
+| GET | /api/networks/:name/leases | DHCP 租约列表 |
 
 完整路由见 `backend/cmd/main.go`。
 

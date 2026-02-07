@@ -1,6 +1,7 @@
-# Backend
-backend/kvmmm
-backend/kvmmm_new
+# Backend build output
+backend/virtpanel
+backend/main
+backend/kvmmm*
 backend/configs/
 
 # Frontend

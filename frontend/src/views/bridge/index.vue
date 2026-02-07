@@ -66,7 +66,7 @@ const creating = ref(false)
 const form = reactive({ name: '', slave_nic: '' })
 const hostNICs = ref<{ name: string; ip: string }[]>([])
 
-const load = async () => { loading.value = true; try { bridges.value = await bridgeApi.list() || [] } catch {} loading.value = false }
+const load = async () => { loading.value = true; try { bridges.value = await bridgeApi.list() || [] } catch(e: any) { Message.error(errMsg(e, '加载失败')) } loading.value = false }
 const loadNICs = async () => { try { hostNICs.value = await hostApi.nics() } catch {} }
 
 const onCreate = async () => {

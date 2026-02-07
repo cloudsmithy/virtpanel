@@ -136,6 +136,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { hostApi, type HostInfo } from '../../api/host'
 import { vmApi, type VM } from '../../api/vm'
+import { Message } from '@arco-design/web-vue'
+import { errMsg } from '../../api/http'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { GaugeChart, LineChart } from 'echarts/charts'
@@ -228,7 +230,7 @@ const load = async () => {
   if (!mounted) return
   try {
     host.value = await hostApi.info()
-    try { allVMs.value = await vmApi.list() } catch {}
+    try { allVMs.value = await vmApi.list() } catch(e: any) { Message.error(errMsg(e, '加载虚拟机失败')) }
     const now = new Date()
     const label = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
     cpuHistory.value.push(host.value.cpu_usage)
@@ -239,7 +241,7 @@ const load = async () => {
       memHistory.value.shift()
       timeLabels.value.shift()
     }
-  } catch {}
+  } catch(e: any) { Message.error(errMsg(e, '加载失败')) }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null

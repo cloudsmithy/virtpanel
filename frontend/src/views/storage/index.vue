@@ -156,7 +156,7 @@ const expandable = reactive({
   },
 })
 
-const load = async () => { loading.value = true; try { pools.value = await storageApi.list(); loadPoolVMs() } catch {} loading.value = false }
+const load = async () => { loading.value = true; try { pools.value = await storageApi.list(); loadPoolVMs() } catch(e: any) { Message.error(errMsg(e, '加载失败')) } loading.value = false }
 const loadVolumes = async (pool: string) => { volLoading.value[pool] = true; try { volumes.value[pool] = await volumeApi.list(pool) } catch { volumes.value[pool] = [] } volLoading.value[pool] = false }
 
 const doAction = async (name: string, action: 'start' | 'stop') => {
