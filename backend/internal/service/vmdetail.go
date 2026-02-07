@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"net"
 	"virtpanel/internal/model"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,18 @@ import (
 
 	libvirt "github.com/digitalocean/go-libvirt"
 )
+
+// ensureBridge creates a bridge and slaves the physical NIC if it doesn't exist.
+func ensureBridge(brName string) error {
+	if _, err := net.InterfaceByName(brName); err == nil {
+		return nil // already exists
+	}
+	// Also check with vp- prefix
+	if _, err := net.InterfaceByName(bridgePrefix + brName); err == nil {
+		return nil
+	}
+	return fmt.Errorf("网桥 %s 不存在，请先在网桥管理中创建", brName)
+}
 
 // Full domain XML structs for detail parsing
 type detailDomainXML struct {
@@ -54,6 +67,7 @@ type detailInterfaceXML struct {
 	Source struct {
 		Network string `xml:"network,attr"`
 		Bridge  string `xml:"bridge,attr"`
+		Dev     string `xml:"dev,attr"`
 	} `xml:"source"`
 	MAC struct {
 		Address string `xml:"address,attr"`
@@ -123,6 +137,9 @@ func (s *LibvirtService) GetVMDetail(name string) (*model.VMDetail, error) {
 		src := iface.Source.Network
 		if src == "" {
 			src = iface.Source.Bridge
+		}
+		if src == "" {
+			src = iface.Source.Dev
 		}
 		detail.NICs = append(detail.NICs, model.VMNIC{
 			Type:   iface.Type,
@@ -242,9 +259,6 @@ func (s *LibvirtService) AttachNIC(vmName string, req model.AttachNICRequest) er
 	if err := s.ensureConnected(); err != nil {
 		return err
 	}
-	if !safeNameRe.MatchString(req.Network) {
-		return fmt.Errorf("invalid network name: %s", req.Network)
-	}
 	d, err := s.l.DomainLookupByName(vmName)
 	if err != nil {
 		return err
@@ -256,10 +270,51 @@ func (s *LibvirtService) AttachNIC(vmName string, req model.AttachNICRequest) er
 	if !validModel[req.Model] {
 		return fmt.Errorf("invalid nic model: %s", req.Model)
 	}
-	xmlDef := fmt.Sprintf(`<interface type='network'>
+	if req.Mode == "" {
+		req.Mode = "network"
+	}
+
+	var xmlDef string
+	switch req.Mode {
+	case "network":
+		if req.Network == "" {
+			req.Network = "default"
+		}
+		if !safeNameRe.MatchString(req.Network) {
+			return fmt.Errorf("invalid network name: %s", req.Network)
+		}
+		xmlDef = fmt.Sprintf(`<interface type='network'>
   <source network='%s'/>
   <model type='%s'/>
 </interface>`, req.Network, req.Model)
+	case "bridge":
+		if req.Bridge == "" {
+			return fmt.Errorf("bridge name required")
+		}
+		if !safeNameRe.MatchString(req.Bridge) {
+			return fmt.Errorf("invalid bridge name: %s", req.Bridge)
+		}
+		if err := ensureBridge(req.Bridge); err != nil {
+			return fmt.Errorf("创建网桥失败: %w", err)
+		}
+		xmlDef = fmt.Sprintf(`<interface type='bridge'>
+  <source bridge='%s'/>
+  <model type='%s'/>
+</interface>`, req.Bridge, req.Model)
+	case "macvtap":
+		if req.Dev == "" {
+			return fmt.Errorf("physical device required for macvtap")
+		}
+		if !safeNameRe.MatchString(req.Dev) {
+			return fmt.Errorf("invalid device name: %s", req.Dev)
+		}
+		xmlDef = fmt.Sprintf(`<interface type='direct'>
+  <source dev='%s' mode='bridge'/>
+  <model type='%s'/>
+</interface>`, req.Dev, req.Model)
+	default:
+		return fmt.Errorf("unsupported mode: %s", req.Mode)
+	}
 
 	state, _, _, _, _, _ := s.l.DomainGetInfo(d)
 	var flags libvirt.DomainDeviceModifyFlags
@@ -298,11 +353,18 @@ func (s *LibvirtService) DetachNIC(vmName, mac string) error {
 				src = iface.Source.Bridge
 				srcType = "bridge"
 			}
+			if src == "" {
+				src = iface.Source.Dev
+				srcType = "direct"
+			}
 			var srcAttr string
-			if srcType == "network" {
+			switch srcType {
+			case "network":
 				srcAttr = fmt.Sprintf(`network='%s'`, src)
-			} else {
+			case "bridge":
 				srcAttr = fmt.Sprintf(`bridge='%s'`, src)
+			case "direct":
+				srcAttr = fmt.Sprintf(`dev='%s' mode='bridge'`, src)
 			}
 			xmlDef := fmt.Sprintf(`<interface type='%s'>
   <source %s/>

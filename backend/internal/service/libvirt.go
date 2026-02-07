@@ -562,7 +562,21 @@ func (s *LibvirtService) UpdateVM(name string, req model.UpdateVMRequest) error 
 	}
 
 	_, err = s.l.DomainDefineXML(newXML)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Hot resize if running
+	state, _, _, _, _, _ := s.l.DomainGetInfo(d)
+	if libvirt.DomainState(state) == libvirt.DomainRunning {
+		if req.CPU > 0 {
+			_ = s.l.DomainSetVcpusFlags(d, uint32(req.CPU), uint32(libvirt.DomainAffectLive))
+		}
+		if req.Memory > 0 {
+			_ = s.l.DomainSetMemoryFlags(d, uint64(req.Memory)*1024, uint32(libvirt.DomainMemLive))
+		}
+	}
+	return nil
 }
 
 func replaceXMLTag(xmlStr, tag, value string) string {

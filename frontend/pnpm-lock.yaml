@@ -23,9 +23,6 @@ importers:
       echarts:
         specifier: ^6.0.0
         version: 6.0.0
-      pinia:
-        specifier: ^2.1.0
-        version: 2.3.1(typescript@5.4.5)(vue@3.5.27(typescript@5.4.5))
       vue:
         specifier: ^3.4.0
         version: 3.5.27(typescript@5.4.5)
@@ -666,15 +663,6 @@ packages:
   pify@4.0.1:
     resolution: {integrity: sha512-uB80kBFb/tfd68bVleG9T5GGsGPjJrLAUpR5PZIrhBnIaRTQRjqdJSsIKkOP6OAIFbj7GOrcudc5pNjZ+geV2g==}
     engines: {node: '>=6'}
-
-  pinia@2.3.1:
-    resolution: {integrity: sha512-khUlZSwt9xXCaTbbxFYBKDc/bWAGWJjOgvxETwkTN7KRm66EeT1ZdZj6i2ceh9sP2Pzqsbc704r2yngBrxBVug==}
-    peerDependencies:
-      typescript: '>=4.4.4'
-      vue: ^2.7.0 || ^3.5.11
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   postcss@8.5.6:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
@@ -1341,16 +1329,6 @@ snapshots:
 
   pify@4.0.1:
     optional: true
-
-  pinia@2.3.1(typescript@5.4.5)(vue@3.5.27(typescript@5.4.5)):
-    dependencies:
-      '@vue/devtools-api': 6.6.4
-      vue: 3.5.27(typescript@5.4.5)
-      vue-demi: 0.14.10(vue@3.5.27(typescript@5.4.5))
-    optionalDependencies:
-      typescript: 5.4.5
-    transitivePeerDependencies:
-      - '@vue/composition-api'
 
   postcss@8.5.6:
     dependencies:

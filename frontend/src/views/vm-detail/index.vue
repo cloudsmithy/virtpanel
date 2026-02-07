@@ -21,8 +21,8 @@
 
     <a-row :gutter="16" class="animate-in" v-if="detail">
       <a-col :span="6" v-for="item in infoCards" :key="item.label">
-        <div class="info-card">
-          <div class="info-label">{{ item.label }}</div>
+        <div class="info-card" :class="{ clickable: item.editable }" @click="item.editable && openEdit()">
+          <div class="info-label">{{ item.label }} <span v-if="item.editable" style="font-size:10px;color:var(--color-primary)">✎</span></div>
           <div class="info-value">{{ item.value }}</div>
         </div>
       </a-col>
@@ -124,17 +124,46 @@
 
     <a-modal v-model:visible="showAttachNIC" title="添加网卡" @ok="onAttachNIC" :ok-loading="attaching" unmount-on-close>
       <a-form :model="nicForm" layout="vertical">
-        <a-form-item label="网络" required>
+        <a-form-item label="网络模式">
+          <a-select v-model="nicForm.mode">
+            <a-option value="network">NAT (虚拟网络)</a-option>
+            <a-option value="bridge">桥接</a-option>
+            <a-option value="macvtap">macvtap</a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item v-if="nicForm.mode === 'network'" label="虚拟网络" required>
           <a-select v-model="nicForm.network" placeholder="选择网络">
             <a-option v-for="net in networks" :key="net.name" :value="net.name">{{ net.name }}</a-option>
           </a-select>
         </a-form-item>
-        <a-form-item label="模型">
+        <a-form-item v-if="nicForm.mode === 'bridge'" label="网桥" required>
+          <a-select v-model="nicForm.bridge" placeholder="选择网桥">
+            <a-option v-for="br in bridges" :key="br.name" :value="br.name">{{ br.name }} ({{ br.ip || 'no ip' }})</a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item v-if="nicForm.mode === 'macvtap'" label="物理网卡" required>
+          <a-select v-model="nicForm.dev" placeholder="选择网卡">
+            <a-option v-for="nic in hostNICs" :key="nic.name" :value="nic.name">{{ nic.name }} ({{ nic.ip || 'no ip' }})</a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="网卡模型">
           <a-select v-model="nicForm.model">
             <a-option value="virtio">virtio</a-option>
             <a-option value="e1000">e1000</a-option>
             <a-option value="rtl8139">rtl8139</a-option>
           </a-select>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal v-model:visible="showEdit" title="修改配置" @ok="onEdit" :ok-loading="editing" unmount-on-close>
+      <a-alert v-if="detail?.state === 'running'" style="margin-bottom:16px">运行中修改将尝试热生效，部分场景需重启</a-alert>
+      <a-form :model="editForm" layout="vertical">
+        <a-form-item label="CPU (核)">
+          <a-input-number v-model="editForm.cpu" :min="1" :max="128" />
+        </a-form-item>
+        <a-form-item label="内存 (MB)">
+          <a-input-number v-model="editForm.memory" :min="128" :max="1048576" :step="256" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -147,6 +176,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { vmApi, type VMDetail } from '../../api/vm'
 import { isoApi, type ISOFile } from '../../api/iso'
 import { networkApi, type Network } from '../../api/network'
+import { hostApi } from '../../api/host'
+import { bridgeApi, type Bridge } from '../../api/bridge'
 import { Message } from '@arco-design/web-vue'
 import { IconLeft } from '@arco-design/web-vue/es/icon'
 
@@ -164,17 +195,22 @@ const showAttachNIC = ref(false)
 const attaching = ref(false)
 const selectedISO = ref('')
 const diskForm = reactive({ source: '', target: 'vdb', bus: 'virtio' })
-const nicForm = reactive({ network: '', model: 'virtio' })
+const nicForm = reactive({ mode: 'network', network: '', bridge: '', dev: '', model: 'virtio' })
+const hostNICs = ref<{ name: string; ip: string }[]>([])
+const bridges = ref<Bridge[]>([])
+const showEdit = ref(false)
+const editing = ref(false)
+const editForm = reactive({ cpu: 1, memory: 1024 })
 
 const stateText = (s: string) => ({ running: '运行中', shutoff: '已关机', paused: '已暂停' }[s] || s)
 
 const infoCards = computed(() => {
   if (!detail.value) return []
   return [
-    { label: 'CPU', value: detail.value.cpu + ' 核' },
-    { label: '内存', value: detail.value.memory >= 1024 ? (detail.value.memory / 1024).toFixed(1) + ' GB' : detail.value.memory + ' MB' },
-    { label: '架构', value: detail.value.arch },
-    { label: '启动设备', value: detail.value.boot },
+    { label: 'CPU', value: detail.value.cpu + ' 核', editable: true },
+    { label: '内存', value: detail.value.memory >= 1024 ? (detail.value.memory / 1024).toFixed(1) + ' GB' : detail.value.memory + ' MB', editable: true },
+    { label: '架构', value: detail.value.arch, editable: false },
+    { label: '启动设备', value: detail.value.boot, editable: false },
   ]
 })
 
@@ -189,6 +225,20 @@ const openVNC = () => {
 }
 const loadISOs = async () => { try { isos.value = await isoApi.list() } catch {} }
 const loadNetworks = async () => { try { networks.value = await networkApi.list() } catch {} }
+const loadHostNICs = async () => { try { hostNICs.value = await hostApi.nics() } catch {} }
+const loadBridges = async () => { try { bridges.value = await bridgeApi.list() } catch {} }
+
+const openEdit = () => {
+  if (!detail.value) return
+  editForm.cpu = detail.value.cpu
+  editForm.memory = detail.value.memory
+  showEdit.value = true
+}
+const onEdit = async () => {
+  editing.value = true
+  try { await vmApi.update(vmName.value, editForm); Message.success('修改成功'); showEdit.value = false; loadDetail() } catch { Message.error('修改失败') }
+  editing.value = false
+}
 
 const openAttachISO = () => { loadISOs(); selectedISO.value = ''; showAttachISO.value = true }
 
@@ -211,13 +261,13 @@ const doDetachISO = async () => { try { await vmApi.detachISO(vmName.value); Mes
 const doDetachDisk = async (target: string) => { try { await vmApi.detachDisk(vmName.value, target); Message.success('已卸载'); loadDetail() } catch { Message.error('卸载失败') } }
 const onAttachNIC = async () => {
   attaching.value = true
-  try { await vmApi.attachNIC(vmName.value, nicForm); Message.success('添加成功'); showAttachNIC.value = false; Object.assign(nicForm, { network: '', model: 'virtio' }); loadDetail() } catch { Message.error('添加失败') }
+  try { await vmApi.attachNIC(vmName.value, nicForm); Message.success('添加成功'); showAttachNIC.value = false; Object.assign(nicForm, { mode: 'network', network: '', bridge: '', dev: '', model: 'virtio' }); loadDetail() } catch { Message.error('添加失败') }
   attaching.value = false
 }
 const doDetachNIC = async (mac: string) => { try { await vmApi.detachNIC(vmName.value, mac); Message.success('已移除'); loadDetail() } catch { Message.error('移除失败') } }
 
-watch(vmName, () => { loadDetail(); loadNetworks(); loadAutostart() })
-onMounted(() => { loadDetail(); loadNetworks(); loadAutostart() })
+watch(vmName, () => { loadDetail(); loadNetworks(); loadHostNICs(); loadBridges(); loadAutostart() })
+onMounted(() => { loadDetail(); loadNetworks(); loadHostNICs(); loadBridges(); loadAutostart() })
 </script>
 
 <style scoped>
@@ -243,6 +293,13 @@ onMounted(() => { loadDetail(); loadNetworks(); loadAutostart() })
   border-radius: 12px;
   padding: 16px 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.info-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+.info-card.clickable:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 .info-label {
   font-size: 11px;

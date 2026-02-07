@@ -68,7 +68,7 @@ export const vmApi = {
     http.post(`/vms/${name}/disks`, data),
   detachDisk: (name: string, target: string) =>
     http.delete(`/vms/${name}/disks/${target}`),
-  attachNIC: (name: string, data: { network: string; model?: string }) =>
+  attachNIC: (name: string, data: { mode?: string; network?: string; bridge?: string; dev?: string; model?: string }) =>
     http.post(`/vms/${name}/nics`, data),
   detachNIC: (name: string, mac: string) =>
     http.delete(`/vms/${name}/nics/${encodeURIComponent(mac)}`),

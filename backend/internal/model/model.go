@@ -158,8 +158,11 @@ type AttachDiskRequest struct {
 }
 
 type AttachNICRequest struct {
-	Network string `json:"network" binding:"required"`
-	Model   string `json:"model"` // virtio
+	Mode    string `json:"mode"`                       // network, bridge, macvtap
+	Network string `json:"network"`                    // for mode=network
+	Bridge  string `json:"bridge"`                     // for mode=bridge
+	Dev     string `json:"dev"`                        // for mode=macvtap
+	Model   string `json:"model"`                      // virtio, e1000, rtl8139
 }
 
 type AttachISORequest struct {
@@ -189,4 +192,16 @@ type ImportVMRequest struct {
 type BatchActionRequest struct {
 	Names  []string `json:"names" binding:"required"`
 	Action string   `json:"action" binding:"required"`
+}
+
+type Bridge struct {
+	Name   string   `json:"name"`
+	Up     bool     `json:"up"`
+	Slaves []string `json:"slaves"`
+	IP     string   `json:"ip"`
+}
+
+type CreateBridgeRequest struct {
+	Name    string `json:"name" binding:"required"`
+	SlaveNIC string `json:"slave_nic"` // optional: physical NIC to attach
 }

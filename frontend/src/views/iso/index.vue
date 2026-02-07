@@ -2,15 +2,18 @@
   <a-space direction="vertical" fill size="medium">
     <a-card title="ISO 镜像">
       <template #extra>
-        <a-upload :custom-request="onUpload" :show-file-list="false" accept=".iso">
+        <a-upload :custom-request="onUpload" :show-file-list="false" accept=".iso" :multiple="true">
           <template #upload-button>
             <a-button type="primary" size="small">上传 ISO</a-button>
           </template>
         </a-upload>
       </template>
-      <div v-if="uploading" class="upload-bar">
-        <div style="font-size:13px;font-weight:500;margin-bottom:8px">正在上传... {{ uploadPercent }}%</div>
-        <a-progress :percent="uploadPercent / 100" :stroke-width="6" color="var(--apple-blue)" />
+      <div v-for="task in uploadTasks" :key="task.id" class="upload-bar">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:500">{{ task.name }} — {{ task.percent }}%</span>
+          <a-button size="mini" status="danger" @click="cancelUpload(task.id)">取消</a-button>
+        </div>
+        <a-progress :percent="task.percent / 100" :stroke-width="6" color="#165DFF" />
       </div>
       <a-table :data="isos" :loading="loading" row-key="name" :pagination="false">
         <template #columns>
@@ -40,21 +43,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { isoApi, type ISOFile } from '../../api/iso'
 import { Message } from '@arco-design/web-vue'
+import type { CancelTokenSource } from 'axios'
+
+interface UploadTask { id: number; name: string; percent: number; cancel: CancelTokenSource }
 
 const isos = ref<ISOFile[]>([])
 const loading = ref(false)
-const uploading = ref(false)
-const uploadPercent = ref(0)
+
+let taskId = 0
+const uploadTasks = ref<UploadTask[]>([])
 
 const load = async () => { loading.value = true; try { isos.value = await isoApi.list() } catch {} loading.value = false }
 
 const onUpload = async (option: any) => {
-  uploading.value = true; uploadPercent.value = 0
-  try { await isoApi.upload(option.fileItem.file!, (p) => { uploadPercent.value = p }); Message.success('上传成功'); load() } catch { Message.error('上传失败') }
-  uploading.value = false
+  const file = option.fileItem.file!
+  const { source, promise } = isoApi.upload(file, (p) => { task.percent = p })
+  const task = reactive<UploadTask>({ id: ++taskId, name: file.name, percent: 0, cancel: source })
+  uploadTasks.value.push(task)
+  try {
+    await promise
+    Message.success(`${file.name} 上传成功`); load()
+  } catch (e: any) {
+    if (e?.message !== 'canceled') Message.error(`${file.name} 上传失败`)
+  }
+  uploadTasks.value = uploadTasks.value.filter(t => t.id !== task.id)
+}
+
+const cancelUpload = (id: number) => {
+  const task = uploadTasks.value.find(t => t.id === id)
+  if (task) { task.cancel.cancel(); Message.info(`已取消 ${task.name}`) }
 }
 
 const doDelete = async (name: string) => {

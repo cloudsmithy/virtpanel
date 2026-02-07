@@ -89,6 +89,11 @@ func main() {
 		api.GET("/isos", h.ListISOs)
 		api.POST("/isos/upload", h.UploadISO)
 		api.DELETE("/isos/:name", h.DeleteISO)
+
+		// Bridges
+		api.GET("/bridges", h.ListBridges)
+		api.POST("/bridges", h.CreateBridge)
+		api.DELETE("/bridges/:name", h.DeleteBridge)
 	}
 
 	r.GET("/ws/vnc/:name", h.VNCWebSocket)

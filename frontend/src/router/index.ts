@@ -14,6 +14,7 @@ const router = createRouter({
         { path: 'vm/:name', name: 'vm-detail', component: () => import('../views/vm-detail/index.vue') },
         { path: 'snapshot', name: 'snapshot', component: () => import('../views/snapshot/index.vue') },
         { path: 'network', name: 'network', component: () => import('../views/network/index.vue') },
+        { path: 'bridge', name: 'bridge', component: () => import('../views/bridge/index.vue') },
         { path: 'storage', name: 'storage', component: () => import('../views/storage/index.vue') },
         { path: 'iso', name: 'iso', component: () => import('../views/iso/index.vue') },
       ],
